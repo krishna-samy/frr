@@ -793,6 +793,8 @@ int main(int argc, char **argv)
 	bool fork_daemon = false;
 	const char *output_file = NULL;
 
+	setbuf(stdout, NULL);
+
 	memset(glob, 0, sizeof(*glob));
 	glob->output_file = stdout;
 
