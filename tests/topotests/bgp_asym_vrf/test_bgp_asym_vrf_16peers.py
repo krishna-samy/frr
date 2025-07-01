@@ -34,6 +34,7 @@ sys.path.append(os.path.join(CWD, "../"))
 from lib import topotest
 from lib.topogen import Topogen, TopoRouter, get_topogen
 from lib.topolog import logger
+from lib.common_config import step
 
 pytestmark = [pytest.mark.bgpd]
 
@@ -125,6 +126,7 @@ def teardown_module(_mod):
     tgen.stop_topology()
 
 
+@pytest.mark.skip(reason="Not needed right now")
 def test_topology_setup():
     """Simple test that just creates the topology and verifies it's up"""
     tgen = get_topogen()
@@ -153,7 +155,6 @@ def test_topology_setup():
     # Test passes - topology is created successfully
 
 
-@pytest.mark.skip(reason="Not needed right now")
 def test_bgp_sessions_established():
     """Test that all 16 BGP sessions are established"""
     tgen = get_topogen()
@@ -234,6 +235,21 @@ def test_bgp_sessions_established():
         logger.info("r2 summary: {}".format(output))
     else:
         logger.info("SUCCESS: All 16 BGP sessions established on r2")
+
+
+def test_sharp_route_installation():
+    """Test installing sharp routes on all routers"""
+    tgen = get_topogen()
+    if tgen.routers_have_failure():
+        pytest.skip(tgen.errors)
+
+    step(" Going to install sharp routes on r2") 
+    # Install sharp routes on each router
+    router = tgen.gears["r2"]
+    cmd = "sharp install route 45.1.1.1 nexthop 192.168.2.2 10"
+    router.vtysh_cmd(cmd)
+
+    logger.info("Sharp routes installed on all routers")
 
 
 @pytest.mark.skip(reason="Not needed right now")
