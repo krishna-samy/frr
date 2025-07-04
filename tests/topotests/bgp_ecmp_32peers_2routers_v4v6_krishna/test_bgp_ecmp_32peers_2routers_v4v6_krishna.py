@@ -84,10 +84,12 @@ def setup_module(module):
         router.load_frr_config(
             os.path.join(CWD, "{}/frr.conf".format(rname)),
             [
-                (TopoRouter.RD_ZEBRA, "-s 180000000"),
+                (TopoRouter.RD_ZEBRA, "-s 180000000 -M dplane_fpm_nl --asic-offload=notify_on_offload"),
+                # (TopoRouter.RD_ZEBRA, "-s 180000000"),
                 (TopoRouter.RD_BGP, None),
                 (TopoRouter.RD_SHARP, None),
                 (TopoRouter.RD_STATIC, None),
+                (TopoRouter.RD_FPM_LISTENER, "-r -d -o fpm_listener.log"),
             ],
         )
 
