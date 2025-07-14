@@ -4226,3 +4226,80 @@ void bgp_send_delayed_eor(struct bgp *bgp)
 	for (ALL_LIST_ELEMENTS(bgp->peer, node, nnode, peer))
 		bgp_write_proceed_actions(peer);
 }
+
+/*
+ * Send manual withdraw message for a specific prefix to a peer
+ * This is for testing/debugging purposes
+ */
+int bgp_send_manual_withdraw(struct peer *peer, struct prefix *prefix)
+{
+	struct stream *s;
+	afi_t afi;
+	safi_t safi;
+	bgp_size_t unfeasible_len;
+	int plen;
+
+	if (!peer || !prefix)
+		return -1;
+
+	if (!peer_established(peer->connection))
+		return -1;
+
+	/* Currently only support IPv4 unicast */
+	if (prefix->family != AF_INET) {
+		if (bgp_debug_neighbor_events(peer))
+			zlog_debug("%s: Manual withdraw only supports IPv4 currently",
+				   peer->host);
+		return -1;
+	}
+
+	afi = AFI_IP;
+	safi = SAFI_UNICAST;
+
+	/* Check if peer supports this AFI/SAFI */
+	if (!peer->afc_nego[afi][safi]) {
+		if (bgp_debug_neighbor_events(peer))
+			zlog_debug("%s: Peer does not support IPv4 unicast",
+				   peer->host);
+		return -1;
+	}
+
+	s = stream_new(peer->max_packet_size);
+
+	/* Make BGP update packet header */
+	bgp_packet_set_marker(s, BGP_MSG_UPDATE);
+
+	/* We will update this length later */
+	stream_putw(s, 0); /* Unfeasible routes length placeholder */
+
+	/* Add the prefix to withdraw */
+	plen = prefix->prefixlen;
+	stream_putc(s, plen);
+
+	/* Put the prefix bits */
+	int prefix_bytes = (plen + 7) / 8;
+	if (prefix_bytes > 0) {
+		stream_put(s, &prefix->u.prefix4, prefix_bytes);
+	}
+
+	/* Calculate unfeasible length */
+	unfeasible_len = stream_get_endp(s) - BGP_HEADER_SIZE - BGP_UNFEASIBLE_LEN;
+	stream_putw_at(s, BGP_HEADER_SIZE, unfeasible_len);
+
+	/* Total Path Attribute Length (0 for withdraw) */
+	stream_putw(s, 0);
+
+	/* Set packet size */
+	bgp_packet_set_size(s);
+
+	if (bgp_debug_neighbor_events(peer))
+		zlog_debug("%s: Sending manual withdraw for prefix %pFX",
+			   peer->host, prefix);
+
+	/* Add packet to the peer */
+	bgp_packet_add(peer->connection, peer, s);
+
+	bgp_writes_on(peer->connection);
+
+	return 0;
+}

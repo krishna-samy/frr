@@ -3032,6 +3032,149 @@ DEFUN(no_bgp_reject_as_sets, no_bgp_reject_as_sets_cmd,
 	return CMD_SUCCESS;
 }
 
+/* BGP manual withdraw command */
+DEFUN(bgp_manual_withdraw,
+      bgp_manual_withdraw_cmd,
+      "bgp withdraw peer A.B.C.D prefix A.B.C.D/M [(1-10000)] [vrf VRFNAME]",
+      BGP_STR
+      "Send manual withdraw message\n"
+      "Target peer\n"
+      "Peer IP address\n"
+      "Prefix to withdraw\n"
+      "IPv4 prefix with mask length\n"
+      "Number of consecutive prefixes to withdraw (1-10000)\n"
+      VRF_CMD_HELP_STR)
+{
+	struct bgp *bgp;
+	struct peer *peer;
+	union sockunion su;
+	struct prefix prefix, current_prefix;
+	const char *vrf_name = NULL;
+	const char *peer_str = NULL;
+	const char *prefix_str = NULL;
+	const char *count_str = NULL;
+	int idx = 0;
+	int ret;
+	uint32_t count = 1;
+	uint32_t sent_count = 0;
+	uint32_t failed_count = 0;
+	uint32_t current_ip;
+
+	/* Parse peer IP address */
+	argv_find(argv, argc, "A.B.C.D", &idx);
+	peer_str = argv[idx]->arg;
+	ret = str2sockunion(peer_str, &su);
+	if (ret < 0) {
+		vty_out(vty, "%% Invalid peer IP address: %s\n", peer_str);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Parse prefix */
+	argv_find(argv, argc, "A.B.C.D/M", &idx);
+	prefix_str = argv[idx]->arg;
+	ret = str2prefix(prefix_str, &prefix);
+	if (ret == 0) {
+		vty_out(vty, "%% Invalid prefix: %s\n", prefix_str);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Only support /32 prefixes for multiple withdraws */
+	if (argc > 6) { /* Check if count parameter might be present */
+		/* Parse optional count */
+		if (argv_find(argv, argc, "(1-10000)", &idx)) {
+			count_str = argv[idx]->arg;
+			count = strtoul(count_str, NULL, 10);
+			if (count == 0 || count > 10000) {
+				vty_out(vty, "%% Invalid count: %s (must be 1-10000)\n", count_str);
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+			/* For multiple prefixes, only allow /32 */
+			if (count > 1 && prefix.prefixlen != 32) {
+				vty_out(vty, "%% Multiple prefix withdraws only supported for /32 prefixes\n");
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+		}
+	}
+
+	/* Check if VRF is specified */
+	if (argv_find(argv, argc, "VRFNAME", &idx))
+		vrf_name = argv[idx]->arg;
+
+	/* Find BGP instance */
+	if (vrf_name && strcmp(vrf_name, "default") != 0) {
+		bgp = bgp_lookup_by_name(vrf_name);
+		if (!bgp) {
+			vty_out(vty, "%% BGP instance not found for VRF %s\n", vrf_name);
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+	} else {
+		bgp = bgp_get_default();
+		if (!bgp) {
+			vty_out(vty, "%% No default BGP instance found\n");
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+	}
+
+	/* Find peer */
+	peer = peer_lookup(bgp, &su);
+	if (!peer) {
+		vty_out(vty, "%% Peer %s not found\n", peer_str);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Check if peer is established */
+	if (!peer_established(peer->connection)) {
+		vty_out(vty, "%% Peer %s is not in Established state\n", peer->host);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Only support IPv4 prefixes for now */
+	if (prefix.family != AF_INET) {
+		vty_out(vty, "%% Only IPv4 prefixes are supported\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Send withdraw messages */
+	current_prefix = prefix;
+	current_ip = ntohl(prefix.u.prefix4.s_addr);
+
+	for (uint32_t i = 0; i < count; i++) {
+		/* Update the current prefix IP */
+		current_prefix.u.prefix4.s_addr = htonl(current_ip + i);
+
+		/* Send withdraw for current prefix */
+		ret = bgp_send_manual_withdraw(peer, &current_prefix);
+		if (ret < 0) {
+			failed_count++;
+			if (count == 1) {
+				vty_out(vty, "%% Failed to send withdraw message\n");
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+		} else {
+			sent_count++;
+		}
+
+		/* Add small delay between withdraws to avoid overwhelming the peer */
+		if (count > 1 && i < count - 1) {
+			usleep(1000); /* 1ms delay */
+		}
+	}
+
+	/* Report results */
+	if (count == 1) {
+		vty_out(vty, "Withdraw message sent to peer %s for prefix %s\n",
+			peer->host, prefix_str);
+	} else {
+		vty_out(vty, "Sent %u withdraw messages to peer %s starting from prefix %s\n",
+			sent_count, peer->host, prefix_str);
+		if (failed_count > 0) {
+			vty_out(vty, "Failed to send %u withdraw messages\n", failed_count);
+		}
+	}
+
+	return CMD_SUCCESS;
+}
+
 /* "bgp deterministic-med" configuration. */
 DEFUN (bgp_deterministic_med,
        bgp_deterministic_med_cmd,
@@ -23851,6 +23994,9 @@ static void community_list_vty(void)
 	install_element(CONFIG_NODE, &no_bgp_lcommunity_list_name_expanded_cmd);
 	install_element(VIEW_NODE, &show_bgp_lcommunity_list_cmd);
 	install_element(VIEW_NODE, &show_bgp_lcommunity_list_arg_cmd);
+
+	/* Manual withdraw command */
+	install_element(CONFIG_NODE, &bgp_manual_withdraw_cmd);
 
 	bgp_community_list_command_completion_setup();
 }

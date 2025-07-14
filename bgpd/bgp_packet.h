@@ -89,4 +89,6 @@ extern bool bgp_notify_send_hard_reset(struct peer *peer, uint8_t code,
 extern bool bgp_notify_received_hard_reset(struct peer *peer, uint8_t code,
 					   uint8_t subcode);
 
+extern int bgp_send_manual_withdraw(struct peer *peer, struct prefix *prefix);
+
 #endif /* _QUAGGA_BGP_PACKET_H */
