@@ -4303,3 +4303,148 @@ int bgp_send_manual_withdraw(struct peer *peer, struct prefix *prefix)
 
 	return 0;
 }
+
+/*
+ * Send manual announce message for a specific prefix to a peer
+ * This is for testing/debugging purposes
+ */
+int bgp_send_manual_announce(struct peer *peer, struct prefix *prefix)
+{
+	struct stream *s;
+	afi_t afi;
+	safi_t safi;
+	bgp_size_t total_attr_len;
+	unsigned long attrlen_pos;
+	int plen;
+	struct bgp_dest *dest;
+	struct bgp_path_info *pi;
+	struct bgp_path_info *path = NULL;
+	struct attr *attr = NULL;
+	struct attr default_attr;
+	struct attr copied_attr;
+	bool use_default_attr = false;
+
+	if (!peer || !prefix)
+		return -1;
+
+	if (!peer_established(peer->connection))
+		return -1;
+
+	/* Currently only support IPv4 unicast */
+	if (prefix->family != AF_INET) {
+		if (bgp_debug_neighbor_events(peer))
+			zlog_debug("%s: Manual announce only supports IPv4 currently",
+				   peer->host);
+		return -1;
+	}
+
+	afi = AFI_IP;
+	safi = SAFI_UNICAST;
+
+	/* Check if peer supports this AFI/SAFI */
+	if (!peer->afc_nego[afi][safi]) {
+		if (bgp_debug_neighbor_events(peer))
+			zlog_debug("%s: Peer does not support IPv4 unicast",
+				   peer->host);
+		return -1;
+	}
+
+	s = stream_new(peer->max_packet_size);
+
+	/* Look up the route in BGP table to get attributes */
+	dest = bgp_node_lookup(peer->bgp->rib[afi][safi], prefix);
+	if (dest) {
+		/* Find the best available path - prefer selected path, fallback to valid path */
+		for (pi = bgp_dest_get_bgp_path_info(dest); pi; pi = pi->next) {
+			if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED)) {
+				attr = pi->attr;
+				path = pi;  /* Save the path for addpath ID */
+				break;
+			}
+			/* If no selected path found yet, remember first valid path as fallback */
+			if (!attr && CHECK_FLAG(pi->flags, BGP_PATH_VALID)) {
+				attr = pi->attr;
+				path = pi;  /* Save the path for addpath ID */
+				/* Don't break - keep looking for a selected path */
+			}
+		}
+		bgp_dest_unlock_node(dest);
+	}
+
+	/* If we found existing route attributes, create a copy and modify nexthop */
+	if (attr) {
+		memcpy(&copied_attr, attr, sizeof(copied_attr));
+		/* Set nexthop to peer's local address (BGP standard behavior) */
+		copied_attr.nexthop = peer->nexthop.v4;
+		copied_attr.mp_nexthop_global_in = peer->nexthop.v4;
+		attr = &copied_attr;
+	}
+
+	/* If no existing route found, create default attributes */
+	if (!attr) {
+		memset(&default_attr, 0, sizeof(default_attr));
+		bgp_attr_default_set(&default_attr, peer->bgp, BGP_ORIGIN_IGP);
+
+		/* Set next hop to peer's local address */
+		default_attr.nexthop = peer->nexthop.v4;
+		default_attr.flag |= ATTR_FLAG_BIT(BGP_ATTR_NEXT_HOP);
+
+		/* Set MED to 0 */
+		default_attr.med = 0;
+		default_attr.flag |= ATTR_FLAG_BIT(BGP_ATTR_MULTI_EXIT_DISC);
+
+		attr = &default_attr;
+		use_default_attr = true;
+	}
+
+	/* Make BGP update packet header */
+	bgp_packet_set_marker(s, BGP_MSG_UPDATE);
+
+	/* Unfeasible routes length (0 for announce) */
+	stream_putw(s, 0);
+
+	/* Save position for total attribute length */
+	attrlen_pos = stream_get_endp(s);
+	stream_putw(s, 0);
+
+	/* Encode attributes */
+	total_attr_len = bgp_packet_attribute(NULL, peer, s, attr, NULL, prefix,
+					     afi, safi, peer->bgp->peer_self, NULL,
+					     NULL, 0, 0, 0, NULL);
+
+	/* Set total attribute length */
+	stream_putw_at(s, attrlen_pos, total_attr_len);
+
+	/* Add NLRI (Network Layer Reachability Information) */
+	/* Check if peer supports addpath capability */
+	bool addpath_capable = bgp_addpath_encode_tx(peer, afi, safi);
+	uint32_t addpath_tx_id = 0;
+
+	/* If we have a valid path, use its addpath ID */
+	if (path && addpath_capable) {
+		addpath_tx_id = bgp_addpath_id_for_peer(peer, afi, safi, &path->tx_addpath);
+	}
+
+	/* Use proper BGP prefix encoding with correct addpath values */
+	stream_put_prefix_addpath(s, prefix, addpath_capable, addpath_tx_id);
+
+	/* Set packet size */
+	bgp_packet_set_size(s);
+
+	if (bgp_debug_neighbor_events(peer))
+		zlog_debug("%s: Sending manual announce for prefix %pFX",
+			   peer->host, prefix);
+
+	/* Clean up default attributes if used */
+	if (use_default_attr) {
+		bgp_attr_unintern_sub(&default_attr);
+	}
+	/* Note: Don't unintern copied_attr as it contains shared pointers */
+
+	/* Add packet to the peer */
+	bgp_packet_add(peer->connection, peer, s);
+
+	bgp_writes_on(peer->connection);
+
+	return 0;
+}

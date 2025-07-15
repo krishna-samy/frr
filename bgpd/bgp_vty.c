@@ -3175,6 +3175,149 @@ DEFUN(bgp_manual_withdraw,
 	return CMD_SUCCESS;
 }
 
+/* BGP manual announce command */
+DEFUN(bgp_manual_announce,
+      bgp_manual_announce_cmd,
+      "bgp announce peer A.B.C.D prefix A.B.C.D/M [(1-10000)] [vrf VRFNAME]",
+      BGP_STR
+      "Send manual announce message\n"
+      "Target peer\n"
+      "Peer IP address\n"
+      "Prefix to announce\n"
+      "IPv4 prefix with mask length\n"
+      "Number of consecutive prefixes to announce (1-10000)\n"
+      VRF_CMD_HELP_STR)
+{
+	struct bgp *bgp;
+	struct peer *peer;
+	union sockunion su;
+	struct prefix prefix, current_prefix;
+	const char *vrf_name = NULL;
+	const char *peer_str = NULL;
+	const char *prefix_str = NULL;
+	const char *count_str = NULL;
+	int idx = 0;
+	int ret;
+	uint32_t count = 1;
+	uint32_t sent_count = 0;
+	uint32_t failed_count = 0;
+	uint32_t current_ip;
+
+	/* Parse peer IP address */
+	argv_find(argv, argc, "A.B.C.D", &idx);
+	peer_str = argv[idx]->arg;
+	ret = str2sockunion(peer_str, &su);
+	if (ret < 0) {
+		vty_out(vty, "%% Invalid peer IP address: %s\n", peer_str);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Parse prefix */
+	argv_find(argv, argc, "A.B.C.D/M", &idx);
+	prefix_str = argv[idx]->arg;
+	ret = str2prefix(prefix_str, &prefix);
+	if (ret == 0) {
+		vty_out(vty, "%% Invalid prefix: %s\n", prefix_str);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Only support /32 prefixes for multiple announces */
+	if (argc > 6) { /* Check if count parameter might be present */
+		/* Parse optional count */
+		if (argv_find(argv, argc, "(1-10000)", &idx)) {
+			count_str = argv[idx]->arg;
+			count = strtoul(count_str, NULL, 10);
+			if (count == 0 || count > 10000) {
+				vty_out(vty, "%% Invalid count: %s (must be 1-10000)\n", count_str);
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+			/* For multiple prefixes, only allow /32 */
+			if (count > 1 && prefix.prefixlen != 32) {
+				vty_out(vty, "%% Multiple prefix announces only supported for /32 prefixes\n");
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+		}
+	}
+
+	/* Check if VRF is specified */
+	if (argv_find(argv, argc, "VRFNAME", &idx))
+		vrf_name = argv[idx]->arg;
+
+	/* Find BGP instance */
+	if (vrf_name && strcmp(vrf_name, "default") != 0) {
+		bgp = bgp_lookup_by_name(vrf_name);
+		if (!bgp) {
+			vty_out(vty, "%% BGP instance not found for VRF %s\n", vrf_name);
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+	} else {
+		bgp = bgp_get_default();
+		if (!bgp) {
+			vty_out(vty, "%% No default BGP instance found\n");
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+	}
+
+	/* Find peer */
+	peer = peer_lookup(bgp, &su);
+	if (!peer) {
+		vty_out(vty, "%% Peer %s not found\n", peer_str);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Check if peer is established */
+	if (!peer_established(peer->connection)) {
+		vty_out(vty, "%% Peer %s is not in Established state\n", peer->host);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Only support IPv4 prefixes for now */
+	if (prefix.family != AF_INET) {
+		vty_out(vty, "%% Only IPv4 prefixes are supported\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	/* Send announce messages */
+	current_prefix = prefix;
+	current_ip = ntohl(prefix.u.prefix4.s_addr);
+
+	for (uint32_t i = 0; i < count; i++) {
+		/* Update the current prefix IP */
+		current_prefix.u.prefix4.s_addr = htonl(current_ip + i);
+
+		/* Send announce for current prefix */
+		ret = bgp_send_manual_announce(peer, &current_prefix);
+		if (ret < 0) {
+			failed_count++;
+			if (count == 1) {
+				vty_out(vty, "%% Failed to send announce message\n");
+				return CMD_WARNING_CONFIG_FAILED;
+			}
+		} else {
+			sent_count++;
+		}
+
+		/* Add small delay between announces to avoid overwhelming the peer */
+		if (count > 1 && i < count - 1) {
+			usleep(1000); /* 1ms delay */
+		}
+	}
+
+	/* Report results */
+	if (count == 1) {
+		vty_out(vty, "Announce message sent to peer %s for prefix %s\n",
+			peer->host, prefix_str);
+	} else {
+		vty_out(vty, "Sent %u announce messages to peer %s starting from prefix %s\n",
+			sent_count, peer->host, prefix_str);
+		if (failed_count > 0) {
+			vty_out(vty, "Failed to send %u announce messages\n", failed_count);
+		}
+	}
+
+	return CMD_SUCCESS;
+}
+
 /* "bgp deterministic-med" configuration. */
 DEFUN (bgp_deterministic_med,
        bgp_deterministic_med_cmd,
@@ -23997,6 +24140,9 @@ static void community_list_vty(void)
 
 	/* Manual withdraw command */
 	install_element(CONFIG_NODE, &bgp_manual_withdraw_cmd);
+
+	/* Manual announce command */
+	install_element(CONFIG_NODE, &bgp_manual_announce_cmd);
 
 	bgp_community_list_command_completion_setup();
 }
