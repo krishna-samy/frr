@@ -416,7 +416,7 @@ def test_sharp_route_installation():
     # Define sharp routes for each router with specific values
     sharp_routes = {
         "r6": {"route": "45.1.1.1", "nexthop": "192.168.6.6"},
-        "r7": {"route": "45.1.1.1", "nexthop": "192.168.7.7"}
+        "r7": {"route": "55.1.1.1", "nexthop": "192.168.7.7"}
     }
     
     # Install sharp routes on each router
