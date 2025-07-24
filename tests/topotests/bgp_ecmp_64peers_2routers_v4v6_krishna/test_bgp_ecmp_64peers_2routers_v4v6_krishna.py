@@ -2,17 +2,17 @@
 # SPDX-License-Identifier: ISC
 
 #
-# test_bgp_ecmp_32peers_2routers_v4v6_krishna.py
+# test_bgp_ecmp_64peers_2routers_v4v6_krishna.py
 #
 # Copyright (c) 2025 by
-# Test for BGP ECMP topology with 32 peers - Dual Stack (IPv4 + IPv6)
+# Test for BGP ECMP topology with 64 peers - Dual Stack (IPv4 + IPv6)
 #
 
 """
-test_bgp_ecmp_32peers_2routers_v4v6_krishna.py: Testing BGP ECMP setup with dual stack
-                      - 2 routers connected by 32 links
+test_bgp_ecmp_64peers_2routers_v4v6_krishna.py: Testing BGP ECMP setup with dual stack
+                      - 2 routers connected by 64 links
                       - r1 and r2: all links in default VRF
-                      - 32 eBGP sessions (1 per link) for ECMP - both IPv4 and IPv6
+                      - 64 eBGP sessions (1 per link) for ECMP - both IPv4 and IPv6
                       - sharp daemon enabled
                       - redistribute sharp and connected routes
 """
@@ -47,7 +47,7 @@ pytestmark = [pytest.mark.bgpd]
 
 def build_topo(tgen):
     """
-    Build topology with 2 routers connected by 32 links
+    Build topology with 2 routers connected by 64 links
     Both r1 and r2 have all links in default VRF for ECMP testing
     Dual stack: IPv4 and IPv6 on all links
     """
@@ -57,8 +57,8 @@ def build_topo(tgen):
     r1 = tgen.gears["r1"]
     r2 = tgen.gears["r2"]
 
-    # Create 32 links between r1 and r2
-    for i in range(1, 33):
+    # Create 64 links between r1 and r2
+    for i in range(1, 65):
         switch = tgen.add_switch("sw{}".format(i))
         switch.add_link(r1)
         switch.add_link(r2)
@@ -96,7 +96,7 @@ def setup_module(module):
     tgen.start_router()
     
     # Wait for routers to start
-    time.sleep(15)  # Increased wait time for 32 links
+    time.sleep(20)  # Increased wait time for 64 links
 
 
 def teardown_module(_mod):
@@ -113,7 +113,7 @@ def test_topology_setup():
     if tgen.routers_have_failure():
         pytest.skip(tgen.errors)
 
-    logger.info("32-way dual stack topology created successfully with ECMP setup")
+    logger.info("64-way dual stack topology created successfully with ECMP setup")
     
     # Just verify routers are running
     r1 = tgen.gears["r1"]
@@ -126,17 +126,17 @@ def test_topology_setup():
     logger.info("r1 has {} interfaces, r2 has {} interfaces".format(
         r1_interfaces.strip(), r2_interfaces.strip()))
     
-    logger.info("BGP ECMP 32-way dual stack topology is ready for testing")
+    logger.info("BGP ECMP 64-way dual stack topology is ready for testing")
 
 
 def test_bgp_ipv4_sessions_established():
-    """Test that all 32 IPv4 BGP sessions are established"""
+    """Test that all 64 IPv4 BGP sessions are established"""
     tgen = get_topogen()
     # Don't run this test if we have any failure.
     if tgen.routers_have_failure():
         pytest.skip(tgen.errors)
 
-    logger.info("Testing IPv4 BGP session establishment (32 sessions)")
+    logger.info("Testing IPv4 BGP session establishment (64 sessions)")
     
     # Check r1 IPv4 BGP sessions using JSON
     r1 = tgen.gears["r1"]
@@ -161,9 +161,9 @@ def test_bgp_ipv4_sessions_established():
                     state = peer_data.get("state", "Unknown")
                     logger.info("r1 IPv4 peer {} state: {}".format(peer_ip, state))
             
-            msg = "r1 total IPv4 established sessions: {}/32".format(established_count)
+            msg = "r1 total IPv4 established sessions: {}/64".format(established_count)
             logger.info(msg)
-            return established_count == 32  # Expect all 32 sessions
+            return established_count == 64  # Expect all 64 sessions
         except Exception as e:
             logger.info("Error checking IPv4 BGP sessions for r1: {}".format(e))
             return False
@@ -176,7 +176,7 @@ def test_bgp_ipv4_sessions_established():
         output = r1.vtysh_cmd("show bgp summary json")
         logger.info("r1 IPv4 summary: {}".format(output))
     else:
-        logger.info("SUCCESS: All 32 IPv4 BGP sessions established on r1")
+        logger.info("SUCCESS: All 64 IPv4 BGP sessions established on r1")
 
     # Check r2 IPv4 BGP sessions using JSON
     r2 = tgen.gears["r2"]
@@ -201,9 +201,9 @@ def test_bgp_ipv4_sessions_established():
                     state = peer_data.get("state", "Unknown")
                     logger.info("r2 IPv4 peer {} state: {}".format(peer_ip, state))
                     
-            msg = "r2 total IPv4 established sessions: {}/32".format(established_count)
+            msg = "r2 total IPv4 established sessions: {}/64".format(established_count)
             logger.info(msg)
-            return established_count == 32  # Expect all 32 sessions
+            return established_count == 64  # Expect all 64 sessions
         except Exception as e:
             logger.info("Error checking IPv4 BGP sessions for r2: {}".format(e))
             return False
@@ -216,19 +216,19 @@ def test_bgp_ipv4_sessions_established():
         output = r2.vtysh_cmd("show bgp summary json")
         logger.info("r2 IPv4 summary: {}".format(output))
     else:
-        logger.info("SUCCESS: All 32 IPv4 BGP sessions established on r2")
+        logger.info("SUCCESS: All 64 IPv4 BGP sessions established on r2")
 
-    logger.info("All 32 IPv4 BGP sessions established successfully")
+    logger.info("All 64 IPv4 BGP sessions established successfully")
 
 
 def test_bgp_ipv6_sessions_established():
-    """Test that all 32 IPv6 BGP sessions are established"""
+    """Test that all 64 IPv6 BGP sessions are established"""
     tgen = get_topogen()
     # Don't run this test if we have any failure.
     if tgen.routers_have_failure():
         pytest.skip(tgen.errors)
 
-    logger.info("Testing IPv6 BGP session establishment (32 sessions)")
+    logger.info("Testing IPv6 BGP session establishment (64 sessions)")
     
     # Check r1 IPv6 BGP sessions using JSON
     r1 = tgen.gears["r1"]
@@ -253,9 +253,9 @@ def test_bgp_ipv6_sessions_established():
                     state = peer_data.get("state", "Unknown")
                     logger.info("r1 IPv6 peer {} state: {}".format(peer_ip, state))
             
-            msg = "r1 total IPv6 established sessions: {}/32".format(established_count)
+            msg = "r1 total IPv6 established sessions: {}/64".format(established_count)
             logger.info(msg)
-            return established_count == 32  # Expect all 32 sessions
+            return established_count == 64  # Expect all 64 sessions
         except Exception as e:
             logger.info("Error checking IPv6 BGP sessions for r1: {}".format(e))
             return False
@@ -268,7 +268,7 @@ def test_bgp_ipv6_sessions_established():
         output = r1.vtysh_cmd("show bgp ipv6 summary json")
         logger.info("r1 IPv6 summary: {}".format(output))
     else:
-        logger.info("SUCCESS: All 32 IPv6 BGP sessions established on r1")
+        logger.info("SUCCESS: All 64 IPv6 BGP sessions established on r1")
 
     # Check r2 IPv6 BGP sessions using JSON
     r2 = tgen.gears["r2"]
@@ -293,9 +293,9 @@ def test_bgp_ipv6_sessions_established():
                     state = peer_data.get("state", "Unknown")
                     logger.info("r2 IPv6 peer {} state: {}".format(peer_ip, state))
                     
-            msg = "r2 total IPv6 established sessions: {}/32".format(established_count)
+            msg = "r2 total IPv6 established sessions: {}/64".format(established_count)
             logger.info(msg)
-            return established_count == 32  # Expect all 32 sessions
+            return established_count == 64  # Expect all 64 sessions
         except Exception as e:
             logger.info("Error checking IPv6 BGP sessions for r2: {}".format(e))
             return False
@@ -308,9 +308,9 @@ def test_bgp_ipv6_sessions_established():
         output = r2.vtysh_cmd("show bgp ipv6 summary json")
         logger.info("r2 IPv6 summary: {}".format(output))
     else:
-        logger.info("SUCCESS: All 32 IPv6 BGP sessions established on r2")
+        logger.info("SUCCESS: All 64 IPv6 BGP sessions established on r2")
 
-    logger.info("All 32 IPv6 BGP sessions established successfully")
+    logger.info("All 64 IPv6 BGP sessions established successfully")
 
 
 def test_bgp_memory_stress_test():
@@ -365,7 +365,6 @@ def test_bgp_memory_stress_test():
                 return False
         
         result, diff = topotest.run_and_expect(check_outq_zero, True, count=60, wait=0.5)
-
         return result
     
     def wait_for_inq_zero(router):
@@ -453,155 +452,19 @@ def test_bgp_memory_stress_test():
             logger.info("Error checking zebra memory: {}".format(e))
             return 0
     
-    def start_zebra_strace(router, iteration):
-        """Start strace on zebra process for memory syscall tracing"""
-        import datetime
-        
-        try:
-            # Get zebra PID
-            pid_output = router.cmd("pidof zebra")
-            zebra_pid = pid_output.strip()
-            
-            if not zebra_pid:
-                logger.info("Iteration {} - zebra process not found".format(iteration))
-                return None
-            
-            # Get thread information for zebra process
-            thread_info = router.cmd("ps -T -p {}".format(zebra_pid))
-            logger.info("Iteration {} - zebra PID {} thread information:\n{}".format(
-                iteration, zebra_pid, thread_info))
-            
-            # Create output filename
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            outfile = "/tmp/zebra_strace_iter{:02d}_{}.log".format(iteration, timestamp)
-            
-            # Start strace with simplified command
-            strace_cmd = "sudo strace -p {} -f -tt -k -o {}".format(zebra_pid, outfile)
-            
-            logger.info("Iteration {} - Starting strace on zebra PID {} to {}".format(
-                iteration, zebra_pid, outfile))
-            
-            # Start strace in background - use router.cmd with & to run in background
-            router.cmd("{} &".format(strace_cmd))
-            
-            # Get the strace PID 
-            strace_pid_output = router.cmd("pgrep -f 'strace.*-p.*{}'".format(zebra_pid))
-            strace_pid = (strace_pid_output.strip().split('\n')[-1] 
-                          if strace_pid_output.strip() else "")
-            
-            if strace_pid:
-                logger.info("Iteration {} - strace started with PID {}".format(
-                    iteration, strace_pid))
-                return strace_pid
-            else:
-                logger.info("Iteration {} - Could not determine strace PID".format(
-                    iteration))
-                return None
-                
-        except Exception as e:
-            logger.info("Iteration {} - Error starting strace: {}".format(iteration, e))
-            return None
-    
-    def stop_zebra_strace(router, iteration, strace_pid):
-        """Stop the strace process"""
-        try:
-            if not strace_pid:
-                logger.info("Iteration {} - No strace PID to stop".format(iteration))
-                return
-            
-            logger.info("Iteration {} - Stopping strace PID {}".format(
-                iteration, strace_pid))
-            router.cmd("kill {}".format(strace_pid))
-            
-            # Wait a moment for strace to finish writing
-            time.sleep(1)
-            
-        except Exception as e:
-            logger.info("Iteration {} - Error stopping strace: {}".format(iteration, e))
-
-    def start_zebra_heaptrack(router, iteration):
-        """Start heaptrack on zebra process for memory profiling"""
-        import datetime
-        
-        try:
-            # Get zebra PID
-            pid_output = router.cmd("pidof zebra")
-            zebra_pid = pid_output.strip()
-            
-            if not zebra_pid:
-                logger.info("Iteration {} - zebra process not found".format(iteration))
-                return None
-            
-            # Get thread information for zebra process
-            thread_info = router.cmd("ps -T -p {}".format(zebra_pid))
-            logger.info("Iteration {} - zebra PID {} thread information:\n{}".format(
-                iteration, zebra_pid, thread_info))
-            
-            # Create output filename
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            outfile = "/tmp/heaptrack.zebra.iter{:02d}_{}.gz".format(iteration, timestamp)
-            
-            # Start heaptrack command
-            heaptrack_cmd = "heaptrack -p {} -o {}".format(zebra_pid, outfile)
-            
-            logger.info("Iteration {} - Starting heaptrack on zebra PID {} to {}".format(
-                iteration, zebra_pid, outfile))
-            
-            # Start heaptrack in background
-            router.cmd("{} &".format(heaptrack_cmd))
-            
-            # Get the heaptrack PID 
-            heaptrack_pid_output = router.cmd("pgrep -f 'heaptrack.*-p.*{}'".format(zebra_pid))
-            heaptrack_pid = (heaptrack_pid_output.strip().split('\n')[-1] 
-                            if heaptrack_pid_output.strip() else "")
-            
-            if heaptrack_pid:
-                logger.info("Iteration {} - heaptrack started with PID {}".format(
-                    iteration, heaptrack_pid))
-                return heaptrack_pid
-            else:
-                logger.info("Iteration {} - Could not determine heaptrack PID".format(
-                    iteration))
-                return None
-                
-        except Exception as e:
-            logger.info("Iteration {} - Error starting heaptrack: {}".format(iteration, e))
-            return None
-
-    def stop_zebra_heaptrack(router, iteration, heaptrack_pid):
-        """Stop the heaptrack process"""
-        try:
-            if not heaptrack_pid:
-                logger.info("Iteration {} - No heaptrack PID to stop".format(iteration))
-                return
-            
-            logger.info("Iteration {} - Stopping heaptrack PID {}".format(
-                iteration, heaptrack_pid))
-            router.cmd("pkill -INT heaptrack")
-            
-            # Wait a moment for heaptrack to finish writing
-            time.sleep(2)
-            
-        except Exception as e:
-            logger.info("Iteration {} - Error stopping heaptrack: {}".format(iteration, e))
-    
     # Run stress test for 50 iterations
     for iteration in range(1, 51):
         logger.info("=" * 60)
         logger.info("Starting stress test iteration {}/50".format(iteration))
         
-        # Start strace for this iteration
-        heaptrack_pid = start_zebra_heaptrack(r1, iteration)
-        
         try:
             # Step 1: Install 20k IPv4 and 20k IPv6 routes from r2
             logger.info("Iteration {} - Installing 20k IPv4 routes".format(iteration))
-            cmd_ipv4 = "sharp install route 45.1.1.1 nexthop 192.168.2.2 100000"
+            cmd_ipv4 = "sharp install route 45.1.1.1 nexthop 192.168.2.2 20000"
             r2.vtysh_cmd(cmd_ipv4)
             
             logger.info("Iteration {} - Installing 20k IPv6 routes".format(iteration))
-            cmd_ipv6 = ("sharp install route 2001:db8:45:1::1 "
-                        "nexthop 2001:db8:192:168::2 100000")
+            cmd_ipv6 = ("sharp install route 2001:db8:45:1::1 nexthop 2001:db8:192:168::2 20000")
             r2.vtysh_cmd(cmd_ipv6)
             
             # Step 2: Wait for outq to become 0 on r1
@@ -618,8 +481,6 @@ def test_bgp_memory_stress_test():
                 logger.error("Iteration {} - MEMORY TEST FAILED: Free ordinary blocks "
                            "({} MB) > 200MB after route installation".format(
                     iteration, free_memory_after_install))
-                # Stop heaptrack before failing
-                stop_zebra_heaptrack(r1, iteration, heaptrack_pid)
                 pytest.fail("Memory stress test failed at iteration {} after route "
                            "installation: {} MB > 200MB".format(
                     iteration, free_memory_after_install))
@@ -627,11 +488,11 @@ def test_bgp_memory_stress_test():
             
             # Step 4: Remove all sharp routes from r2
             logger.info("Iteration {} - Removing IPv4 sharp routes".format(iteration))
-            cmd_remove_ipv4 = "sharp remove route 45.1.1.1 100000"
+            cmd_remove_ipv4 = "sharp remove route 45.1.1.1 20000"
             r2.vtysh_cmd(cmd_remove_ipv4)
             
             logger.info("Iteration {} - Removing IPv6 sharp routes".format(iteration))
-            cmd_remove_ipv6 = "sharp remove route 2001:db8:45:1::1 100000"
+            cmd_remove_ipv6 = "sharp remove route 2001:db8:45:1::1 20000"
             r2.vtysh_cmd(cmd_remove_ipv6)
             
             # Step 5: Wait for inq to become 0 on r1 after route removal
@@ -647,8 +508,6 @@ def test_bgp_memory_stress_test():
                 logger.error("Iteration {} - MEMORY TEST FAILED: Free ordinary blocks "
                            "({} MB) > 200MB after route removal".format(
                     iteration, free_memory_after_remove))
-                # Stop heaptrack before failing
-                stop_zebra_heaptrack(r1, iteration, heaptrack_pid)
                 pytest.fail("Memory stress test failed at iteration {} after route removal: "
                            "{} MB > 200MB".format(
                     iteration, free_memory_after_remove))
@@ -660,14 +519,9 @@ def test_bgp_memory_stress_test():
                 
         except Exception as e:
             logger.error("Iteration {} - Exception occurred: {}".format(iteration, e))
-            # Stop heaptrack before failing
-            stop_zebra_heaptrack(r1, iteration, heaptrack_pid)
             pytest.fail("Memory stress test failed at iteration {} with exception: {}".format(
                 iteration, str(e)))
             return
-        finally:
-            # Always stop heaptrack at the end of each iteration
-            stop_zebra_heaptrack(r1, iteration, heaptrack_pid)
     
     logger.info("=" * 60)
     logger.info("SUCCESS: All 50 iterations of memory stress test completed successfully")
@@ -701,16 +555,16 @@ def test_interface_verification():
     if tgen.routers_have_failure():
         pytest.skip(tgen.errors)
 
-    logger.info("Testing 32-way dual stack interface configuration")
+    logger.info("Testing 64-way dual stack interface configuration")
     
     r1 = tgen.gears["r1"]
     r2 = tgen.gears["r2"]
     
-    # Check that both routers have 32 interfaces
+    # Check that both routers have 64 interfaces
     for router, router_name in [(r1, "r1"), (r2, "r2")]:
         output = router.cmd("ip link show | grep {}-eth | wc -l".format(router_name))
         interface_count = int(output.strip())
-        assert interface_count == 32, "{} should have 32 interfaces, got {}".format(
+        assert interface_count == 64, "{} should have 64 interfaces, got {}".format(
             router_name, interface_count)
         
         # Check IPv4 addresses
@@ -724,7 +578,7 @@ def test_interface_verification():
         logger.info("{} has {} IPv4 addresses and {} IPv6 addresses on interfaces".format(
             router_name, ipv4_count, ipv6_count))
 
-    logger.info("All 32-way dual stack interfaces verified successfully")
+    logger.info("All 64-way dual stack interfaces verified successfully")
 
 
 if __name__ == "__main__":
