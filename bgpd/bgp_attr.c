@@ -1052,6 +1052,48 @@ static void attrhash_init(void)
 		hash_create(attrhash_key_make, attrhash_cmp, "BGP Attributes");
 }
 
+/* Public: take an extra reference on an interned attr and its interned subs. */
+void bgp_attr_ref(struct attr *attr)
+{
+    if (!attr)
+        return;
+    /* Bump the attr itself */
+    attr->refcnt++;
+    /* Sub-objects are already interned canonical pointers on an interned attr.
+     * Their lifetimes are tied to attr->unintern via bgp_attr_unintern_sub,
+     * but they may also be shared elsewhere. Take explicit refs to be safe.
+     */
+    if (attr->aspath)
+        attr->aspath->refcnt++;
+    struct community *comm = bgp_attr_get_community(attr);
+    if (comm)
+        comm->refcnt++;
+    struct ecommunity *ecomm = bgp_attr_get_ecommunity(attr);
+    if (ecomm)
+        ecomm->refcnt++;
+    struct ecommunity *v6ecomm = bgp_attr_get_ipv6_ecommunity(attr);
+    if (v6ecomm)
+        v6ecomm->refcnt++;
+    struct lcommunity *lcomm = bgp_attr_get_lcommunity(attr);
+    if (lcomm)
+        lcomm->refcnt++;
+    struct cluster_list *cluster = bgp_attr_get_cluster(attr);
+    if (cluster)
+        cluster->refcnt++;
+    struct transit *transit = bgp_attr_get_transit(attr);
+    if (transit)
+        transit->refcnt++;
+    if (attr->encap_subtlvs)
+        attr->encap_subtlvs->refcnt++;
+    if (attr->srv6_l3vpn)
+        attr->srv6_l3vpn->refcnt++;
+    if (attr->srv6_vpn)
+        attr->srv6_vpn->refcnt++;
+    struct bgp_nhc *nhc = bgp_attr_get_nhc(attr);
+    if (nhc)
+        nhc->refcnt++;
+}
+
 /*
  * special for hash_clean below
  */

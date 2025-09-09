@@ -846,12 +846,20 @@ extern int bgp_static_set(struct vty *vty, bool negate, const char *ip_str,
 			  const char *routermac);
 
 /* this is primarily for MPLS-VPN */
+struct bgp_attr_reuse_ctx {
+	bool valid;
+	const struct attr *in_attr;
+	afi_t afi;
+	safi_t safi;
+	struct attr *interned;
+};
 extern void bgp_update(struct peer *peer, const struct prefix *p,
 		       uint32_t addpath_id, struct attr *attr, afi_t afi,
 		       safi_t safi, int type, int sub_type,
 		       struct prefix_rd *prd, mpls_label_t *label,
 		       uint8_t num_labels, int soft_reconfig,
-		       struct bgp_route_evpn *evpn);
+		       struct bgp_route_evpn *evpn,
+		       struct bgp_attr_reuse_ctx *reuse_ctx);
 extern void bgp_withdraw(struct peer *peer, const struct prefix *p,
 			 uint32_t addpath_id, afi_t afi, safi_t safi, int type,
 			 int sub_type, struct prefix_rd *prd,
