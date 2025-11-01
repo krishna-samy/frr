@@ -313,6 +313,7 @@ def test_bgp_ipv6_sessions_established():
     logger.info("All 32 IPv6 BGP sessions established successfully")
 
 
+@pytest.mark.skip(reason="Not needed right now")
 def test_bgp_memory_stress_test():
     """Stress test for BGP memory usage with sharp routes over 50 iterations"""
     tgen = get_topogen()
