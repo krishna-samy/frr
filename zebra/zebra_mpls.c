@@ -2759,6 +2759,15 @@ static void mpls_zebra_nhe_update(struct route_entry *re, afi_t afi,
 	nhe = zebra_nhg_rib_find_nhe(new_nhe, afi);
 
 	route_entry_update_nhe(re, nhe);
+	/* Label updates affect NH resolution cache; invalidate fast-path
+	 * if the updated NHE has labels on any nexthop.
+	 */
+	for (struct nexthop *nh = nhe->nhg.nexthop; nh; nh = nh->next) {
+		if (nh->nh_label && nh->nh_label->num_labels) {
+			global_nh_epoch++;
+			break;
+		}
+	}
 }
 
 static bool ftn_update_nexthop(bool add_p, struct nexthop *nexthop,
