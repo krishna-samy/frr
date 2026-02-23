@@ -408,6 +408,8 @@ struct nhg_hash_entry *zebra_nhg_alloc(void)
 
 	zebra_nhg_tracker_init(nhe);
 
+	zebra_nhg_tracker_init(nhe);
+
 	return nhe;
 }
 

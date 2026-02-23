@@ -176,7 +176,6 @@ struct nhg_event_tracker *zebra_nhg_tracker_create(struct nhg_hash_entry *nhe, i
 	zlog_info("NHG %u: created tracker %u (event=%s ifindex=%u) total trackers=%zu", nhe->id,
 		  tracker->nhg_tracker_id, event == NHG_TRACKER_EVENT_INTF_UP ? "UP" : "DOWN",
 		  ifindex, nhg_event_tracker_list_count(&nhe->tracker_list));
-
 	return tracker;
 }
 
