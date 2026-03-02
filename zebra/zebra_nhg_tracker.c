@@ -193,16 +193,30 @@ static void zebra_nhg_tracker_decount_stale_re(struct tracker_prefix_map_head *p
 	struct nhg_event_tracker *old_tracker = old_entry->tracker;
 	struct route_node *old_rn;
 
+	/* If the prefix exists in the old tracker's matched or
+	 * unmatched table, decrement its re_count and remove the
+	 * entry (release rn and trn locks, clear trn->info).
+	 */
 	old_rn = route_node_lookup(old_tracker->matched_table.matched_table, &rn->p);
 	if (old_rn) {
 		if (old_tracker->matched_table.re_count > 0)
 			old_tracker->matched_table.re_count--;
+		if (old_rn->info) {
+			route_unlock_node(old_rn->info);
+			old_rn->info = NULL;
+			route_unlock_node(old_rn);
+		}
 		route_unlock_node(old_rn);
 	} else {
 		old_rn = route_node_lookup(old_tracker->unmatched_table.unmatched_table, &rn->p);
 		if (old_rn) {
 			if (old_tracker->unmatched_table.re_count > 0)
 				old_tracker->unmatched_table.re_count--;
+			if (old_rn->info) {
+				route_unlock_node(old_rn->info);
+				old_rn->info = NULL;
+				route_unlock_node(old_rn);
+			}
 			route_unlock_node(old_rn);
 		}
 	}
@@ -331,6 +345,25 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 				  tracker->nhg_tracker_id, re->nhe->id,
 				  tracker->matched_table.re_count,
 				  tracker->unmatched_table.re_count);
+			/* If this prefix was previously parked in the
+			 * unmatched table, remove it before adding to
+			 * matched to avoid double-counting.
+			 */
+			struct route_node *unmatched_trn;
+
+			unmatched_trn = route_node_lookup(
+				tracker->unmatched_table.unmatched_table, &rn->p);
+			if (unmatched_trn) {
+				if (unmatched_trn->info) {
+					route_unlock_node(unmatched_trn->info);
+					unmatched_trn->info = NULL;
+					route_unlock_node(unmatched_trn);
+					if (tracker->unmatched_table.re_count > 0)
+						tracker->unmatched_table.re_count--;
+				}
+				route_unlock_node(unmatched_trn);
+			}
+
 			zebra_nhg_tracker_add_route(prefix_map, tracker,
 						    tracker->matched_table.matched_table,
 						    &tracker->matched_table.re_count, rn, re);
