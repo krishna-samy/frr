@@ -127,6 +127,7 @@ void zebra_nhg_tracker_move_routes(struct route_table *src_table, uint32_t *src_
 		} else {
 			/* release the lock held during node find */
 			route_unlock_node(trn);
+<<<<<<< HEAD
 			/*
 			 * we end up here if there is a duplicate RN in 2 trackers
 			 * So there are now two tracker-side locks on the same RIB rn
@@ -135,6 +136,9 @@ void zebra_nhg_tracker_move_routes(struct route_table *src_table, uint32_t *src_
 			zlog_info("%s warning: duplicate RIB RN %pRN already in dst table, releasing src reference",
 				  __func__, (struct route_node *)old_trn->info);
 			route_unlock_node((struct route_node *)old_trn->info);
+=======
+			route_unlock_node(old_trn->info);
+>>>>>>> 9cb2fac3ff (zebra: change lock unlock logic)
 		}
 
 		old_trn->info = NULL;
