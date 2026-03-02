@@ -127,7 +127,6 @@ void zebra_nhg_tracker_move_routes(struct route_table *src_table, uint32_t *src_
 		} else {
 			/* release the lock held during node find */
 			route_unlock_node(trn);
-<<<<<<< HEAD
 			/*
 			 * we end up here if there is a duplicate RN in 2 trackers
 			 * So there are now two tracker-side locks on the same RIB rn
@@ -136,9 +135,6 @@ void zebra_nhg_tracker_move_routes(struct route_table *src_table, uint32_t *src_
 			zlog_info("%s warning: duplicate RIB RN %pRN already in dst table, releasing src reference",
 				  __func__, (struct route_node *)old_trn->info);
 			route_unlock_node((struct route_node *)old_trn->info);
-=======
-			route_unlock_node(old_trn->info);
->>>>>>> 9cb2fac3ff (zebra: change lock unlock logic)
 		}
 
 		old_trn->info = NULL;
@@ -183,7 +179,9 @@ static void zebra_nhg_tracker_collapse(struct tracker_prefix_map_head *prefix_ma
 }
 
 /*
- * Evict a stale RE from an older tracker and collapse that tracker.
+ * Remove a stale prefix entry from an older tracker's table
+ * and collapse that tracker into the new one.
+ * The RE itself remains in the RIB.
  */
 static void zebra_nhg_tracker_decount_stale_re(struct tracker_prefix_map_head *prefix_map,
 					       struct nhg_event_tracker *tracker,
@@ -191,33 +189,34 @@ static void zebra_nhg_tracker_decount_stale_re(struct tracker_prefix_map_head *p
 					       struct route_node *rn)
 {
 	struct nhg_event_tracker *old_tracker = old_entry->tracker;
-	struct route_node *old_rn;
+	struct route_node *old_trn;
 
 	/* If the prefix exists in the old tracker's matched or
 	 * unmatched table, decrement its re_count and remove the
-	 * entry (release rn and trn locks, clear trn->info).
+	 * tracker table entry (release rn and trn locks, clear
+	 * trn->info).  The RE stays in the RIB.
 	 */
-	old_rn = route_node_lookup(old_tracker->matched_table.matched_table, &rn->p);
-	if (old_rn) {
+	old_trn = route_node_lookup(old_tracker->matched_table.matched_table, &rn->p);
+	if (old_trn) {
 		if (old_tracker->matched_table.re_count > 0)
 			old_tracker->matched_table.re_count--;
-		if (old_rn->info) {
-			route_unlock_node(old_rn->info);
-			old_rn->info = NULL;
-			route_unlock_node(old_rn);
+		if (old_trn->info) {
+			route_unlock_node(old_trn->info);
+			old_trn->info = NULL;
+			route_unlock_node(old_trn); /* data-lock from original route_node_get */
 		}
-		route_unlock_node(old_rn);
+		route_unlock_node(old_trn); /* lookup-lock from route_node_lookup above */
 	} else {
-		old_rn = route_node_lookup(old_tracker->unmatched_table.unmatched_table, &rn->p);
-		if (old_rn) {
+		old_trn = route_node_lookup(old_tracker->unmatched_table.unmatched_table, &rn->p);
+		if (old_trn) {
 			if (old_tracker->unmatched_table.re_count > 0)
 				old_tracker->unmatched_table.re_count--;
-			if (old_rn->info) {
-				route_unlock_node(old_rn->info);
-				old_rn->info = NULL;
-				route_unlock_node(old_rn);
+			if (old_trn->info) {
+				route_unlock_node(old_trn->info);
+				old_trn->info = NULL;
+				route_unlock_node(old_trn); /* data-lock from original route_node_get */
 			}
-			route_unlock_node(old_rn);
+			route_unlock_node(old_trn); /* lookup-lock from route_node_lookup above */
 		}
 	}
 
