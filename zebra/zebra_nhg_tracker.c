@@ -301,16 +301,23 @@ static void zebra_nhg_tracker_add_route(struct tracker_prefix_map_head *prefix_m
 }
 
 /*
- * Park an RE in the appropriate tracker instead of queuing it
- * for best-path selection.  Called from rib_link when the RE's
- * NHG has active trackers.
+ * Park an RE in a tracker instead of queuing it for best-path selection.
+ * Called from rib_link when the RE's NHG has active trackers.
+ * Iteration order is oldest tracker to newest tracker.
+ * We compare the incoming NHG nexthops against each tracker's snapshot.
+ * On first match, park the prefix in that tracker's matched table and stop.
+ * If no tracker matches, park the prefix in the newest tracker's unmatched table.
  */
 struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struct route_entry *re)
 {
 	struct nhg_event_tracker *tracker;
+	/* RE -> NHG (`re->nhe`), and that NHG carries both the tracker list
+	 * and the per-NHG prefix-to-tracker lookup hash.
+	 */
 	struct tracker_prefix_map_head *prefix_map = &re->nhe->tracker_prefix_map;
 	bool matched = false;
 
+	/* reverse iteration walks last->first, i.e. oldest->newest */
 	frr_rev_each (nhg_event_tracker_list, &re->nhe->tracker_list, tracker) {
 		if (zebra_nhg_nexthop_compare(re->nhe->nhg.nexthop,
 					      tracker->nhg_tracker_snapshot->nhg.nexthop, rn)) {
@@ -347,6 +354,7 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 	}
 
 	if (!matched) {
+		/* no snapshot matched, so park in the newest tracker's unmatched table (head) */
 		tracker = nhg_event_tracker_list_first(&re->nhe->tracker_list);
 		if (tracker) {
 			zlog_info("%s: %pRN (type %s) unmatched, parking in tracker %u for NHG %u (matched=%u unmatched=%u)",
