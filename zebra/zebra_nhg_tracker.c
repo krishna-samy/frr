@@ -303,7 +303,7 @@ static void zebra_nhg_tracker_add_route(struct tracker_prefix_map_head *prefix_m
 
 	zebra_nhg_tracker_rn_add(tracker_table, re_count, prefix_map, tracker, rn, re);
 }
-
+// test
 /*
  * Park an RE in the appropriate tracker instead of queuing it
  * for best-path selection.  Called from rib_link when the old RE's
