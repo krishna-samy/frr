@@ -329,6 +329,30 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 			zebra_nhg_tracker_add_route(prefix_map, tracker,
 						    tracker->matched_table.matched_table,
 						    &tracker->matched_table.re_count, rn, re);
+			/* If this prefix was previously parked in this
+			 * tracker's unmatched table, remove it before
+			 * adding to matched, to avoid double-counting in
+			 * both matched and unmatched tables of the same tracker.
+			 */
+			 struct route_node *unmatched_trn;
+
+			 unmatched_trn = route_node_lookup(
+				 tracker->unmatched_table.unmatched_table, &rn->p);
+			 if (unmatched_trn) {
+				 if (unmatched_trn->info) {
+					 route_unlock_node(unmatched_trn->info);
+					 unmatched_trn->info = NULL;
+					 route_unlock_node(unmatched_trn);
+					 if (tracker->unmatched_table.re_count > 0)
+						 tracker->unmatched_table.re_count--;
+				 }
+				 route_unlock_node(unmatched_trn);
+			 }
+ 
+			 zebra_nhg_tracker_add_route(prefix_map, tracker,
+							 tracker->matched_table.matched_table,
+							 &tracker->matched_table.re_count, rn, re);
+ 
 			matched = true;
 			break;
 		}
