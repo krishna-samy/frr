@@ -42,6 +42,7 @@
 #include "zebra/zebra_vxlan_private.h"
 #include "zebra/zebra_pbr.h"
 #include "zebra/zebra_nhg.h"
+#include "zebra/zebra_nhg_tracker.h"
 #include "zebra/zebra_evpn_mh.h"
 #include "zebra/interface.h"
 #include "northbound_cli.h"
@@ -4125,6 +4126,25 @@ DEFPY (zebra_nexthop_group_keep,
 	return CMD_SUCCESS;
 }
 
+DEFPY (zebra_nexthop_group_tracker,
+       zebra_nexthop_group_tracker_cmd,
+       "[no] zebra nexthop-group tracker [(1-3600)]",
+       NO_STR
+       ZEBRA_STR
+       "Nexthop-Group\n"
+       "Tracker timeout for up/down events\n"
+       "Time in seconds from 1-3600\n")
+{
+	if (no)
+		zrouter.nhg_tracker_timeout = NHG_TRACKER_DEFAULT_TIMEOUT_SEC;
+	else if (tracker_str)
+		zrouter.nhg_tracker_timeout = tracker;
+	else
+		zrouter.nhg_tracker_timeout = NHG_TRACKER_DEFAULT_TIMEOUT_SEC;
+
+	return CMD_SUCCESS;
+}
+
 static int config_write_protocol(struct vty *vty)
 {
 	if (zrouter.allow_delete)
@@ -4132,6 +4152,9 @@ static int config_write_protocol(struct vty *vty)
 
 	if (zrouter.nhg_keep != ZEBRA_DEFAULT_NHG_KEEP_TIMER)
 		vty_out(vty, "zebra nexthop-group keep %u\n", zrouter.nhg_keep);
+
+	if (zrouter.nhg_tracker_timeout != NHG_TRACKER_DEFAULT_TIMEOUT_SEC)
+		vty_out(vty, "zebra nexthop-group tracker %u\n", zrouter.nhg_tracker_timeout);
 
 	if (zrouter.ribq->spec.hold != ZEBRA_RIB_PROCESS_HOLD_TIME)
 		vty_out(vty, "zebra work-queue %u\n", zrouter.ribq->spec.hold);
@@ -4268,6 +4291,7 @@ DEFUN (show_zebra,
 		       zrouter.default_mc_forwardingv6 ? "On" : "Off");
 	ttable_add_row(table, "Backup Nexthops Installed|%s",
 		       zrouter.backup_nhs_installed ? "Yes" : "No");
+	ttable_add_row(table, "NHG Tracker Timeout|%u seconds", zrouter.nhg_tracker_timeout);
 
 	out = ttable_dump(table, "\n");
 	vty_out(vty, "%s\n", out);
@@ -4625,6 +4649,7 @@ void zebra_vty_init(void)
 	install_element(CONFIG_NODE, &no_allow_external_route_update_cmd);
 
 	install_element(CONFIG_NODE, &zebra_nexthop_group_keep_cmd);
+	install_element(CONFIG_NODE, &zebra_nexthop_group_tracker_cmd);
 	install_element(CONFIG_NODE, &ip_zebra_import_table_distance_cmd);
 	install_element(CONFIG_NODE, &ipv6_zebra_import_table_distance_cmd);
 	install_element(CONFIG_NODE, &no_ip_zebra_import_table_cmd);

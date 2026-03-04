@@ -557,7 +557,7 @@ struct nhg_event_tracker *zebra_nhg_tracker_create(struct nhg_hash_entry *nhe, i
 	nhg_event_tracker_hash_add(&nhe->tracker_hash, tracker);
 
 	event_add_timer(zrouter.master, nhg_tracker_timer_expiry, tracker,
-			NHG_TRACKER_DEFAULT_TIMEOUT_SEC, &tracker->timer);
+			zrouter.nhg_tracker_timeout, &tracker->timer);
 
 	zlog_info("%s: NHG %u created tracker %u (event=%s ifindex=%u) total trackers=%zu",
 		  __func__, nhe->id, tracker->nhg_tracker_id,

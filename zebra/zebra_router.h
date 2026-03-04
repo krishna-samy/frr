@@ -232,6 +232,8 @@ struct zebra_router {
 #define ZEBRA_DEFAULT_NHG_KEEP_TIMER 180
 	uint32_t nhg_keep;
 
+	uint32_t nhg_tracker_timeout;
+
 	/* Should we allow non FRR processes to delete our routes */
 	bool allow_delete;
 
