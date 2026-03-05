@@ -1503,17 +1503,26 @@ static void rib_process(struct route_node *rn)
 					 info->safi);
 	}
 
-	/* Update fib according to selection results */
+	/* Update fib according to selection results.
+	 * Skip FIB delete if old_fib is parked in a tracker — keep
+	 * the installed route until the tracker completes.
+	 */
 	if (new_fib && old_fib)
 		rib_process_update_fib(zvrf, rn, old_fib, new_fib);
 	else if (new_fib)
 		rib_process_add_fib(zvrf, rn, new_fib);
-	else if (old_fib && !RIB_KERNEL_ROUTE(old_fib))
+	else if (old_fib && !RIB_KERNEL_ROUTE(old_fib) &&
+		 !CHECK_FLAG(old_fib->status, ROUTE_ENTRY_TRACKER))
 		rib_process_del_fib(zvrf, rn, old_fib);
 
 	/* Remove all RE entries queued for removal */
 	RNODE_FOREACH_RE_SAFE (rn, re, next) {
 		if (CHECK_FLAG(re->status, ROUTE_ENTRY_REMOVED)) {
+			/* Skip if parked in a tracker — keep RE alive in RIB
+			 * until the NHG tracker completes
+			 */
+			if (CHECK_FLAG(re->status, ROUTE_ENTRY_TRACKER))
+				continue;
 			if (IS_ZEBRA_DEBUG_RIB) {
 				rnode_debug(rn, vrf_id, "rn %p, removing re %p",
 					    (void *)rn, (void *)re);
@@ -3951,6 +3960,10 @@ static void rib_link(struct route_node *rn, struct route_entry *re)
 		if (old_re->nhe && nhg_event_tracker_list_count(&old_re->nhe->tracker_list) > 0) {
 			orig_nhe = old_re->nhe;
 			tracker = zebra_nhg_tracker_park_re(rn, re, orig_nhe);
+			/* Mark old RE as tracked so rib_process keeps it
+			 * in the FIB until the tracker completes.
+			 */
+			SET_FLAG(old_re->status, ROUTE_ENTRY_TRACKER);
 			break;
 		}
 	}

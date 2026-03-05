@@ -3098,11 +3098,18 @@ void nexthop_vrf_update(struct route_node *rn, struct route_entry *re, vrf_id_t 
  * new nhg sent down from the upper level protocol would resolve to it
  */
 bool zebra_nhg_nexthop_compare(const struct nexthop *nhop, const struct nexthop *old_nhop,
-			       const struct route_node *rn)
+			       const struct route_node *rn, bool skip_active_check)
 {
 	bool same = true;
+	const struct nexthop *nhop_head = nhop;
 
 	while (nhop && old_nhop) {
+		/* When called from tracker path, mark NHs coming from the protocol as
+		 * "pretend active" in order to compare them with the tracker snapshot NHs as active.
+		 */
+		if (skip_active_check && !CHECK_FLAG(nhop->flags, NEXTHOP_FLAG_PRETEND_ACTIVE))
+			SET_FLAG(((struct nexthop *)nhop)->flags, NEXTHOP_FLAG_PRETEND_ACTIVE);
+
 		if (IS_ZEBRA_DEBUG_NHG_DETAIL)
 			zlog_debug("%s: %pRN Comparing %pNHvv(%u) ACTIVE: %d to old: %pNHvv(%u) ACTIVE: %d nexthop same: %d",
 				   __func__, rn, nhop, nhop->flags,
@@ -3117,8 +3124,11 @@ bool zebra_nhg_nexthop_compare(const struct nexthop *nhop, const struct nexthop 
 			/*
 			 * If the new nexthop is not active and the old nexthop is also not active,
 			 * then we know that we can skip both the old and new nexthops.
+			 * When NEXTHOP_FLAG_PRETEND_ACTIVE is set, treat new NH as active
+			 * for NHG tracker comparison.
 			 */
 			if (!CHECK_FLAG(nhop->flags, NEXTHOP_FLAG_ACTIVE) &&
+			    !CHECK_FLAG(nhop->flags, NEXTHOP_FLAG_PRETEND_ACTIVE) &&
 			    nexthop_same_no_ifindex(nhop, old_nhop)) {
 				if (IS_ZEBRA_DEBUG_NHG_DETAIL)
 					zlog_debug("%s: %pRN new is not active going to the next one",
@@ -3190,6 +3200,14 @@ bool zebra_nhg_nexthop_compare(const struct nexthop *nhop, const struct nexthop 
 			same = false;
 	}
 
+	/* Clear the temporary tracker flag from all new NHs */
+	if (skip_active_check) {
+		const struct nexthop *nh;
+
+		for (nh = nhop_head; nh; nh = nh->next)
+			UNSET_FLAG(((struct nexthop *)nh)->flags, NEXTHOP_FLAG_PRETEND_ACTIVE);
+	}
+
 	return same;
 }
 
@@ -3219,7 +3237,7 @@ static struct nhg_hash_entry *zebra_nhg_rib_compare_old_nhe(
 	nhop = new_nhe->nhg.nexthop;
 	old_nhop = old_nhe->nhg.nexthop;
 
-	same = zebra_nhg_nexthop_compare(nhop, old_nhop, rn);
+	same = zebra_nhg_nexthop_compare(nhop, old_nhop, rn, false);
 
 	if (same) {
 		struct nexthop_group *bnhg, *old_bnhg;
@@ -3233,9 +3251,8 @@ static struct nhg_hash_entry *zebra_nhg_rib_compare_old_nhe(
 			else if (!bnhg && old_bnhg)
 				same = false;
 			else
-				same = zebra_nhg_nexthop_compare(bnhg->nexthop,
-								 old_bnhg->nexthop,
-								 rn);
+				same = zebra_nhg_nexthop_compare(bnhg->nexthop, old_bnhg->nexthop,
+								 rn, false);
 		}
 	}
 

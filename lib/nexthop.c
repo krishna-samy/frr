@@ -156,11 +156,16 @@ static int _nexthop_cmp_no_labels(const struct nexthop *next1,
 	if (next1->vrf_id > next2->vrf_id)
 		return 1;
 
-	if (next1->type < next2->type)
-		return -1;
+	/* The NHs coming from the protocol may not have ifindex,
+	 * so skip type comparison with tracker snapshot NHs
+	 */
+	if (!(CHECK_FLAG(next1->flags, NEXTHOP_FLAG_PRETEND_ACTIVE) && next1->ifindex == 0)) {
+		if (next1->type < next2->type)
+			return -1;
 
-	if (next1->type > next2->type)
-		return 1;
+		if (next1->type > next2->type)
+			return 1;
+	}
 
 	if (use_weight) {
 		if (next1->weight < next2->weight)

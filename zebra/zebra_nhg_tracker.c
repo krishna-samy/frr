@@ -320,7 +320,8 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 
 	frr_rev_each (nhg_event_tracker_list, &orig_nhe->tracker_list, tracker) {
 		if (zebra_nhg_nexthop_compare(re->nhe->nhg.nexthop,
-					      tracker->nhg_tracker_snapshot->nhg.nexthop, rn)) {
+					      tracker->nhg_tracker_snapshot->nhg.nexthop, rn,
+					      true)) {
 			zlog_info("%s: %pRN (type %s) matched tracker %u from originating NHG %u (matched=%u unmatched=%u)",
 				  __func__, rn, zebra_route_string(re->type),
 				  tracker->nhg_tracker_id, orig_nhe->id,
