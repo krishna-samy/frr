@@ -416,7 +416,7 @@ extern int is_zebra_valid_kernel_table(uint32_t table_id);
 extern int is_zebra_main_routing_table(uint32_t table_id);
 extern int zebra_check_addr(const struct prefix *p);
 
-extern void rib_delnode(struct route_node *rn, struct route_entry *re);
+extern void rib_delnode(struct route_node *rn, struct route_entry *re, bool flag);
 extern void rib_install_kernel(struct route_node *rn, struct route_entry *re,
 			       struct route_entry *old);
 extern void rib_uninstall_kernel(struct route_node *rn, struct route_entry *re);
