@@ -322,14 +322,7 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 		if (zebra_nhg_nexthop_compare(re->nhe->nhg.nexthop,
 					      tracker->nhg_tracker_snapshot->nhg.nexthop, rn,
 					      true)) {
-			zlog_info("%s: %pRN (type %s) matched tracker %u from originating NHG %u (matched=%u unmatched=%u)",
-				  __func__, rn, zebra_route_string(re->type),
-				  tracker->nhg_tracker_id, orig_nhe->id,
-				  tracker->matched_table.re_count,
-				  tracker->unmatched_table.re_count);
-			zebra_nhg_tracker_add_route(prefix_map, tracker,
-						    tracker->matched_table.matched_table,
-						    &tracker->matched_table.re_count, rn, re);
+
 			/* If this prefix was previously parked in this
 			 * tracker's unmatched table, remove it before
 			 * adding to matched, to avoid double-counting in
@@ -355,6 +348,15 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 							 &tracker->matched_table.re_count, rn, re);
  
 			matched = true;
+			zlog_info("%s: %pRN (type %s) matched tracker %u from originating NHG %u (matched=%u unmatched=%u orig_re=%u)",
+				__func__, rn, zebra_route_string(re->type),
+				tracker->nhg_tracker_id, orig_nhe->id,
+				tracker->matched_table.re_count,
+				tracker->unmatched_table.re_count,
+				tracker->orig_re_count);
+			  zebra_nhg_tracker_add_route(prefix_map, tracker,
+							  tracker->matched_table.matched_table,
+							  &tracker->matched_table.re_count, rn, re);
 			break;
 		}
 	}
@@ -362,14 +364,15 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 	if (!matched) {
 		tracker = nhg_event_tracker_list_first(&orig_nhe->tracker_list);
 		if (tracker) {
-			zlog_info("%s: %pRN (type %s) unmatched, parking in tracker %u for originating NHG %u (matched=%u unmatched=%u)",
-				  __func__, rn, zebra_route_string(re->type),
-				  tracker->nhg_tracker_id, orig_nhe->id,
-				  tracker->matched_table.re_count,
-				  tracker->unmatched_table.re_count);
 			zebra_nhg_tracker_add_route(prefix_map, tracker,
 						    tracker->unmatched_table.unmatched_table,
 						    &tracker->unmatched_table.re_count, rn, re);
+			zlog_info("%s: %pRN (type %s) unmatched, parking in tracker %u for originating NHG %u (matched=%u unmatched=%u orig_re=%u)",
+				__func__, rn, zebra_route_string(re->type),
+				tracker->nhg_tracker_id, orig_nhe->id,
+				tracker->matched_table.re_count,
+				tracker->unmatched_table.re_count,
+				tracker->orig_re_count);
 		}
 	}
 

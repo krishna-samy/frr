@@ -2785,7 +2785,7 @@ static void process_subq_early_route_add(struct zebra_early_route *ere)
 			}
 		}
 
-		rib_delnode(rn, same);
+		rib_delnode(rn, same, false);
 	}
 
 	/* See if we can remove some RE entries that are queued for
@@ -3026,7 +3026,7 @@ static void process_subq_early_route_delete(struct zebra_early_route *ere)
 		if (RIB_SYSTEM_ROUTE(re))
 			dplane_sys_route_del(rn, same);
 
-		rib_delnode(rn, same);
+		rib_delnode(rn, same, true);
 	}
 
 	route_unlock_node(rn);
@@ -3953,11 +3953,12 @@ static void rib_link(struct route_node *rn, struct route_entry *re)
 	 * an NHG with active trackers.
 	 */
 	RNODE_FOREACH_RE (rn, old_re) {
-		if (CHECK_FLAG(old_re->status, ROUTE_ENTRY_REMOVED))
-			continue;
 		if (!rib_compare_routes(re, old_re, true))
 			continue;
 		if (old_re->nhe && nhg_event_tracker_list_count(&old_re->nhe->tracker_list) > 0) {
+			zlog_info("%s: re %p NHG %u old_re %p NHG %u prefix %pRN",
+				  __func__, re, re->nhe ? re->nhe->id : 0,
+				  old_re, old_re->nhe ? old_re->nhe->id : 0, rn);
 			orig_nhe = old_re->nhe;
 			tracker = zebra_nhg_tracker_park_re(rn, re, orig_nhe);
 			/* Mark old RE as tracked so rib_process keeps it
@@ -4042,7 +4043,7 @@ void rib_unlink(struct route_node *rn, struct route_entry *re)
 	zebra_rib_route_entry_free(re);
 }
 
-void rib_delnode(struct route_node *rn, struct route_entry *re)
+void rib_delnode(struct route_node *rn, struct route_entry *re, bool flag)
 {
 	afi_t afi;
 	safi_t safi;
@@ -4071,8 +4072,32 @@ void rib_delnode(struct route_node *rn, struct route_entry *re)
 					   rn, rn, re, zebra_route_string(re->type));
 		}
 	}
+	struct nhg_event_tracker *tracker = NULL;
+	struct nhg_hash_entry *orig_nhe = NULL;
+	struct route_entry *check_re;
 
-	rib_queue_add(rn);
+	if (flag) {
+		RNODE_FOREACH_RE (rn, check_re) {
+			if (!rib_compare_routes(re, check_re, true))
+				continue;
+			if (check_re->nhe &&
+			    nhg_event_tracker_list_count(&check_re->nhe->tracker_list) > 0) {
+				orig_nhe = check_re->nhe;
+				tracker = zebra_nhg_tracker_park_re(rn, re, orig_nhe);
+				zlog_info("%s: re %p NHG %u check_re %p NHG %u prefix %pRN orig_re=%u",
+					  __func__, re, re->nhe ? re->nhe->id : 0,
+					  check_re, check_re->nhe->id, rn,
+					  tracker ? tracker->orig_re_count : 0);
+				SET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
+				if (tracker)
+					zebra_nhg_tracker_flush_if_full(tracker, orig_nhe);
+				break;
+			}
+		}
+	}
+
+	if (!tracker)
+		rib_queue_add(rn);
 }
 
 /*
@@ -4828,7 +4853,7 @@ void rib_sweep_table(struct route_table *table)
 				SET_FLAG(nexthop->flags, NEXTHOP_FLAG_FIB);
 
 			rib_uninstall_kernel(rn, re);
-			rib_delnode(rn, re);
+			rib_delnode(rn, re, false);
 		}
 	}
 
@@ -4875,7 +4900,7 @@ unsigned long rib_score_proto_table(uint8_t proto, unsigned short instance,
 					continue;
 				if (re->type == proto
 				    && re->instance == instance) {
-					rib_delnode(rn, re);
+					rib_delnode(rn, re, false);
 					n++;
 				}
 			}
