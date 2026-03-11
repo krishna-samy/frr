@@ -4461,6 +4461,69 @@ DEFUN (show_zebra_metaq_counters,
 	return zebra_show_metaq_counter(vty, uj);
 }
 
+/* Display Zebra NHG tracker counters */
+DEFUN (show_zebra_tracker,
+       show_zebra_tracker_cmd,
+       "show zebra tracker [json]",
+       SHOW_STR
+       ZEBRA_STR
+       "Zebra NHG tracker counters\n"
+       JSON_STR)
+{
+	bool uj = use_json(argc, argv);
+	uint32_t full = zrouter.tracker_counters.tracker_full;
+	uint32_t count = MIN(full, TRACKER_FLUSH_LOG_SIZE);
+	uint32_t start;
+
+	if (full <= TRACKER_FLUSH_LOG_SIZE)
+		start = 0;
+	else
+		start = zrouter.tracker_counters.log_idx % TRACKER_FLUSH_LOG_SIZE;
+
+	if (uj) {
+		json_object *json = json_object_new_object();
+		json_object *arr = json_object_new_array();
+
+		json_object_int_add(json, "trackerFull", full);
+
+		for (uint32_t i = 0; i < count; i++) {
+			uint32_t idx = (start + i) % TRACKER_FLUSH_LOG_SIZE;
+			struct tracker_flush_event *evt =
+				&zrouter.tracker_counters.log[idx];
+			json_object *jev = json_object_new_object();
+
+			json_object_int_add(jev, "nhgId", evt->nhg_id);
+			json_object_int_add(jev, "trackerId", evt->tracker_id);
+			json_object_int_add(jev, "matched", evt->matched);
+			json_object_int_add(jev, "unmatched", evt->unmatched);
+			json_object_int_add(jev, "origReCount",
+					    evt->orig_re_count);
+			json_object_array_add(arr, jev);
+		}
+
+		json_object_object_add(json, "flushEvents", arr);
+		vty_json(vty, json);
+	} else {
+		vty_out(vty, "NHG Tracker Counters\n");
+		vty_out(vty, "Tracker full events: %" PRIu32 "\n", full);
+
+		for (uint32_t i = 0; i < count; i++) {
+			uint32_t idx = (start + i) % TRACKER_FLUSH_LOG_SIZE;
+			struct tracker_flush_event *evt =
+				&zrouter.tracker_counters.log[idx];
+
+			vty_out(vty,
+				"  Event %u: NHG %" PRIu32 " tracker %" PRIu32
+				" matched=%" PRIu32 " unmatched=%" PRIu32
+				" orig_re=%" PRIu32 "\n",
+				i, evt->nhg_id, evt->tracker_id, evt->matched,
+				evt->unmatched, evt->orig_re_count);
+		}
+	}
+
+	return CMD_SUCCESS;
+}
+
 DEFUN_HIDDEN (show_frr,
 	      show_frr_cmd,
 	      "show frr",
@@ -4731,6 +4794,7 @@ void zebra_vty_init(void)
 	install_element(CONFIG_NODE, &zebra_dplane_queue_limit_cmd);
 	install_element(CONFIG_NODE, &no_zebra_dplane_queue_limit_cmd);
 	install_element(VIEW_NODE, &show_zebra_metaq_counters_cmd);
+	install_element(VIEW_NODE, &show_zebra_tracker_cmd);
 
 #ifdef HAVE_NETLINK
 	install_element(CONFIG_NODE, &zebra_kernel_netlink_batch_tx_buf_cmd);

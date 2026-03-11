@@ -234,6 +234,22 @@ struct zebra_router {
 
 	uint32_t nhg_tracker_timeout;
 
+#define TRACKER_FLUSH_LOG_SIZE 16
+
+	struct tracker_flush_event {
+		uint32_t nhg_id;
+		uint32_t tracker_id;
+		uint32_t matched;
+		uint32_t unmatched;
+		uint32_t orig_re_count;
+	};
+
+	struct {
+		uint32_t tracker_full;
+		struct tracker_flush_event log[TRACKER_FLUSH_LOG_SIZE];
+		uint32_t log_idx;
+	} tracker_counters;
+
 	/* Should we allow non FRR processes to delete our routes */
 	bool allow_delete;
 

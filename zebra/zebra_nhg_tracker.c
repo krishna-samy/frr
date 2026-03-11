@@ -397,6 +397,19 @@ void zebra_nhg_tracker_flush_if_full(struct nhg_event_tracker *tracker, struct n
 		  __func__, tracker->nhg_tracker_id, nhe->id, tracker->matched_table.re_count,
 		  tracker->unmatched_table.re_count, tracker->orig_re_count);
 
+	zrouter.tracker_counters.tracker_full++;
+	{
+		struct tracker_flush_event *evt =
+			&zrouter.tracker_counters.log[
+				zrouter.tracker_counters.log_idx % TRACKER_FLUSH_LOG_SIZE];
+		evt->nhg_id = nhe->id;
+		evt->tracker_id = tracker->nhg_tracker_id;
+		evt->matched = tracker->matched_table.re_count;
+		evt->unmatched = tracker->unmatched_table.re_count;
+		evt->orig_re_count = tracker->orig_re_count;
+		zrouter.tracker_counters.log_idx++;
+	}
+
 	for (trn = route_top(tracker->matched_table.matched_table); trn; trn = route_next(trn)) {
 		if (trn->info) {
 			struct route_node *rn = trn->info;
