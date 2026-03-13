@@ -354,9 +354,6 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 				tracker->matched_table.re_count,
 				tracker->unmatched_table.re_count,
 				tracker->orig_re_count);
-			  zebra_nhg_tracker_add_route(prefix_map, tracker,
-							  tracker->matched_table.matched_table,
-							  &tracker->matched_table.re_count, rn, re);
 			break;
 		}
 	}
