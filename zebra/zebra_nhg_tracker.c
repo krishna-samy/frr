@@ -537,10 +537,17 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 
 /*
  * Walk all per-VRF tables in a tracker table, clear TRACKER flags,
- * update NHE for non-removed REs, and queue each RN for rib_process.
+ * optionally update NHE for non-removed REs, and queue each RN for
+ * rib_process.
+ *
+ * update_nhe: when true (matched table), restore each RE's NHE to the
+ *   tracker's parent NHE so the kernel sees the same NHG ID.
+ *   When false (unmatched table), leave the RE's NHE intact so
+ *   rib_process resolves the RE with its original intended NHG
+ *   (e.g. a new ECMP group).
  */
 static void zebra_nhg_tracker_flush_table(struct nhg_tracker_table *tt, struct nhg_hash_entry *nhe,
-					  const char *label)
+					  bool update_nhe, const char *label)
 {
 	struct tracker_vrf_table *vt;
 
@@ -570,7 +577,7 @@ static void zebra_nhg_tracker_flush_table(struct nhg_tracker_table *tt, struct n
 										      : "");
 
 				UNSET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
-				if (!CHECK_FLAG(re->status, ROUTE_ENTRY_REMOVED))
+				if (update_nhe && !CHECK_FLAG(re->status, ROUTE_ENTRY_REMOVED))
 					route_entry_update_nhe(re, nhe);
 			}
 			rib_queue_add(rn);
@@ -607,8 +614,9 @@ static void zebra_nhg_tracker_flush_full(struct nhg_event_tracker *tracker,
 		zrouter.tracker_counters.log_idx++;
 	}
 
-	zebra_nhg_tracker_flush_table(&tracker->matched_table, nhe, "flush_full matched");
-	zebra_nhg_tracker_flush_table(&tracker->unmatched_table, nhe, "flush_full unmatched");
+	zebra_nhg_tracker_flush_table(&tracker->matched_table, nhe, true, "flush_full matched");
+	zebra_nhg_tracker_flush_table(&tracker->unmatched_table, nhe, false,
+				      "flush_full unmatched");
 
 	zebra_nhg_tracker_free(nhe, tracker);
 }
@@ -653,8 +661,9 @@ static void nhg_tracker_timer_expiry(struct event *event)
 		  tracker->matched_table.re_count, tracker->unmatched_table.re_count,
 		  tracker->orig_re_count);
 
-	zebra_nhg_tracker_flush_table(&tracker->matched_table, nhe, "timer_expiry matched");
-	zebra_nhg_tracker_flush_table(&tracker->unmatched_table, nhe, "timer_expiry unmatched");
+	zebra_nhg_tracker_flush_table(&tracker->matched_table, nhe, true, "timer_expiry matched");
+	zebra_nhg_tracker_flush_table(&tracker->unmatched_table, nhe, false,
+				      "timer_expiry unmatched");
 
 	zebra_nhg_tracker_free(nhe, tracker);
 }
@@ -733,6 +742,52 @@ static void zebra_nhg_tracker_loop_detection(struct nhg_hash_entry *nhe,
 }
 
 /*
+ * Count unique (prefix, type, instance, vrf_id) tuples in the NHE's
+ * re-tree.  This must match the prefix_map deduplication criteria so
+ * that orig_re_count agrees with re_count accumulated during parking.
+ *
+ * Without this, NHGs shared across unicast and multicast tables
+ * inflate orig_re_count (e.g. 4) while re_count only reaches the
+ * unique prefix count (e.g. 2), preventing flush_if_full from firing.
+ */
+static uint32_t tracker_count_unique_res(struct nhe_re_tree_head *head)
+{
+	struct route_entry *re;
+	struct tracker_prefix_map_head tmp = {};
+	uint32_t count = 0;
+
+	tracker_prefix_map_init(&tmp);
+
+	frr_each (nhe_re_tree, head, re) {
+		struct tracker_prefix_map_entry key;
+
+		memset(&key, 0, sizeof(key));
+		prefix_copy(&key.p, &re->rn->p);
+		key.type = re->type;
+		key.instance = re->instance;
+		key.vrf_id = re->vrf_id;
+
+		if (!tracker_prefix_map_find(&tmp, &key)) {
+			struct tracker_prefix_map_entry *entry;
+
+			entry = XCALLOC(MTYPE_NHG_TRACKER_PREFIX_MAP, sizeof(*entry));
+			*entry = key;
+			tracker_prefix_map_add(&tmp, entry);
+			count++;
+		}
+	}
+
+	while (tracker_prefix_map_count(&tmp)) {
+		struct tracker_prefix_map_entry *e = tracker_prefix_map_pop(&tmp);
+
+		XFREE(MTYPE_NHG_TRACKER_PREFIX_MAP, e);
+	}
+	tracker_prefix_map_fini(&tmp);
+
+	return count;
+}
+
+/*
  * Create a new tracker upon interface event.
  */
 struct nhg_event_tracker *zebra_nhg_tracker_create(struct nhg_hash_entry *nhe, ifindex_t ifindex,
@@ -763,7 +818,7 @@ struct nhg_event_tracker *zebra_nhg_tracker_create(struct nhg_hash_entry *nhe, i
 	tracker->nhg_tracker_snapshot = snapshot;
 	tracker->ifindex = ifindex;
 	tracker->event = event;
-	tracker->orig_re_count = nhe_re_tree_count(&nhe->re_head);
+	tracker->orig_re_count = tracker_count_unique_res(&nhe->re_head);
 
 	tracker->matched_table.vrf_tables = NULL;
 	tracker->matched_table.re_count = 0;
