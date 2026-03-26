@@ -4093,9 +4093,13 @@ void rib_delnode(struct route_node *rn, struct route_entry *re, bool flag)
 			    nhg_event_tracker_list_count(&check_re->nhe->tracker_list) > 0) {
 				orig_nhe = check_re->nhe;
 				tracker = zebra_nhg_tracker_park_re(rn, re, orig_nhe);
-				zlog_info("%s: re %p NHG %u check_re %p NHG %u prefix %pRN orig_re=%u",
-					  __func__, re, re->nhe ? re->nhe->id : 0,
-					  check_re, check_re->nhe->id, rn,
+				zlog_info("eyaln:parking node to delete %pRN type %s vrf %s(%u) NHG %u tracker %u (matched=%u unmatched=%u orig_re=%u)",
+					  rn, zebra_route_string(re->type),
+					  vrf_id_to_name(re->vrf_id), re->vrf_id,
+					  re->nhe ? re->nhe->id : 0,
+					  tracker ? tracker->nhg_tracker_id : 0,
+					  tracker ? tracker->matched_table.re_count : 0,
+					  tracker ? tracker->unmatched_table.re_count : 0,
 					  tracker ? tracker->orig_re_count : 0);
 				SET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
 				if (tracker)
