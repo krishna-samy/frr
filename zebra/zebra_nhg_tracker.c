@@ -620,16 +620,59 @@ void zebra_nhg_tracker_flush_if_full(struct nhg_event_tracker *tracker, struct n
 static void nhg_tracker_timer_expiry(struct event *event)
 {
 	struct nhg_event_tracker *tracker = EVENT_ARG(event);
+	struct nhg_hash_entry *nhe = tracker->parent_nhe;
+	struct route_node *trn;
 
 	zrouter.tracker_counters.tracker_timer_expired++;
 
-	zlog_info("%s: tracker %u (parent NHG %u ifindex %u event %s): timer expired", __func__,
-		  tracker->nhg_tracker_id, tracker->parent_nhe ? tracker->parent_nhe->id : 0,
-		  tracker->ifindex, tracker->event == NHG_TRACKER_EVENT_INTF_UP ? "UP" : "DOWN");
+	zlog_info("%s: tracker %u (parent NHG %u ifindex %u event %s): timer expired (matched=%u unmatched=%u)",
+		  __func__, tracker->nhg_tracker_id, nhe ? nhe->id : 0, tracker->ifindex,
+		  tracker->event == NHG_TRACKER_EVENT_INTF_UP ? "UP" : "DOWN",
+		  tracker->matched_table.re_count, tracker->unmatched_table.re_count);
 
-	/* TODO: add completion logic before freeing */
+	if (!nhe) {
+		zebra_nhg_tracker_free(nhe, tracker);
+		return;
+	}
 
-	zebra_nhg_tracker_free(tracker->parent_nhe, tracker);
+	/*
+	 * Unpark all REs held by this tracker so that rib_process can
+	 * run best-path selection on them.  This mirrors the logic in
+	 * zebra_nhg_tracker_flush_if_full().
+	 */
+	if (tracker->matched_table.matched_table) {
+		for (trn = route_top(tracker->matched_table.matched_table); trn;
+		     trn = route_next(trn)) {
+			if (trn->info) {
+				struct route_node *rn = trn->info;
+				struct route_entry *re;
+
+				RNODE_FOREACH_RE (rn, re) {
+					if (zebra_nhg_tracker_owns_re(nhe, tracker, rn, re))
+						UNSET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
+				}
+				rib_queue_add(rn);
+			}
+		}
+	}
+
+	if (tracker->unmatched_table.unmatched_table) {
+		for (trn = route_top(tracker->unmatched_table.unmatched_table); trn;
+		     trn = route_next(trn)) {
+			if (trn->info) {
+				struct route_node *rn = trn->info;
+				struct route_entry *re;
+
+				RNODE_FOREACH_RE (rn, re) {
+					if (zebra_nhg_tracker_owns_re(nhe, tracker, rn, re))
+						UNSET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
+				}
+				rib_queue_add(rn);
+			}
+		}
+	}
+
+	zebra_nhg_tracker_free(nhe, tracker);
 }
 
 /*
