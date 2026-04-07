@@ -109,6 +109,9 @@ struct nhg_hash_entry {
 	 */
 	struct tracker_prefix_map_head tracker_prefix_map;
 
+	/* Active batch install state (non-NULL while batches are in-flight) */
+	struct tracker_batch_state *batch_state;
+
 /*
  * Is this nexthop group valid, ie all nexthops are fully resolved.
  * What is fully resolved?  It's a nexthop that is either self contained
