@@ -52,6 +52,7 @@
 #include "zebra/zebra_evpn_mh.h"
 #include "zebra/zebra_neigh.h"
 #include "zebra/zebra_script.h"
+#include "zebra/zebra_nhg_tracker.h"
 
 DEFINE_MGROUP(ZEBRA, "zebra");
 
@@ -2172,6 +2173,15 @@ static void rib_process_result(struct zebra_dplane_ctx *ctx)
 
 	zebra_rib_evaluate_rn_nexthops(rn, seq, rt_delete);
 	zebra_rib_evaluate_mpls(rn);
+
+	/* Tracker batch: route completed via dplane */
+	if (re && re->batch_nhg_id != 0) {
+		uint32_t nhg_id = re->batch_nhg_id;
+
+		re->batch_nhg_id = 0;
+		tracker_batch_route_done(nhg_id);
+	}
+
 done:
 
 	if (rn)
@@ -2490,6 +2500,11 @@ static void process_subq_route(struct listnode *lnode, uint8_t qindex)
 	zvrf = rib_dest_vrf(dest);
 
 	rib_process(rnode);
+
+	/* Tracker batch: catch routes that were processed by rib_process
+	 * but NOT sent to dplane (not selected for FIB install).
+	 */
+	tracker_batch_check_unsent(rnode);
 
 	if (IS_ZEBRA_DEBUG_RIB_DETAILED) {
 		struct route_entry *re = NULL;
@@ -4056,6 +4071,14 @@ void rib_unlink(struct route_node *rn, struct route_entry *re)
 	if (IS_ZEBRA_DEBUG_RIB)
 		rnode_debug(rn, re->vrf_id, "%s: rn %p, re %p nhe %p", __func__, (void *)rn,
 			    (void *)re, re->nhe);
+
+	/* Tracker batch: route removed without going to dplane */
+	if (re->batch_nhg_id != 0) {
+		uint32_t nhg_id = re->batch_nhg_id;
+
+		re->batch_nhg_id = 0;
+		tracker_batch_route_done(nhg_id);
+	}
 
 	dest = rib_dest_from_rnode(rn);
 

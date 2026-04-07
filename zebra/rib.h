@@ -161,6 +161,12 @@ struct route_entry {
 	/* Sequence value incremented for each dataplane operation */
 	uint32_t dplane_sequence;
 
+	/* Non-zero when this RE is part of a tracker batch install.
+	 * Holds the parent NHG ID so rib_process_result can find
+	 * the batch state and decrement the pending counter.
+	 */
+	uint32_t batch_nhg_id;
+
 	/* Source protocol instance */
 	uint16_t instance;
 

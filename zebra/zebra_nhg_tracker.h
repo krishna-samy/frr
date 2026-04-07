@@ -112,6 +112,50 @@ tracker_prefix_map_hash_cmp(const struct tracker_prefix_map_entry *a,
 DECLARE_HASH(tracker_prefix_map, struct tracker_prefix_map_entry, item,
 	     tracker_prefix_map_hash_cmp, tracker_prefix_map_hash_key);
 
+/*
+ * Tracker two-phase batch install.
+ *
+ * Phase 1: send all non-reuse groups at once (parallel).
+ * Phase 2: send the reuse group (biggest group, preserves NHG ID).
+ */
+
+/* One route_node in a batch */
+struct tracker_batch_rn {
+	struct route_node *rn;
+	struct tracker_batch_rn *next;
+};
+
+/* One group of routes sharing the same NHG ID */
+struct tracker_batch_entry {
+	uint32_t nhg_id;
+	struct nhg_hash_entry *nhe;
+	bool update_nhe;
+	bool filter_by_nhg_id;
+	uint32_t route_count;
+	struct tracker_batch_rn *rn_list;
+	struct tracker_batch_entry *next;
+};
+
+/* Two-phase batch state: lives on the parent NHE while batches are in-flight */
+struct tracker_batch_state {
+	/* Phase 1: non-reuse groups (sent all at once) */
+	struct tracker_batch_entry *phase1_list;
+	/* Phase 2: reuse group (sent after phase 1 completes) */
+	struct tracker_batch_entry *reuse_batch;
+
+	uint32_t routes_pending;
+	uint8_t phase; /* 1 or 2 */
+
+	struct nhg_hash_entry *parent_nhe;
+	struct event *safety_timer;
+};
+
+/* Called from rib_process_result and rib_unlink when a batch route completes */
+extern void tracker_batch_route_done(uint32_t parent_nhg_id);
+
+/* Called from process_subq_route for batch routes not sent to dplane */
+extern void tracker_batch_check_unsent(struct route_node *rn);
+
 /* Init/fini tracker list and hash inside nhg_hash_entry */
 extern void zebra_nhg_tracker_init(struct nhg_hash_entry *nhe);
 extern void zebra_nhg_tracker_fini(struct nhg_hash_entry *nhe);
