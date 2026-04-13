@@ -895,6 +895,15 @@ static void tracker_flush_batch_process_table(struct nhg_hash_entry *parent_nhe,
 					continue;
 				}
 
+				/*
+				 * In the delete_table, only process CHANGED REs
+				 * that are also REMOVED.  Leave CHANGED+!REMOVED
+				 * REs for the matched/unmatched flush which
+				 * applies update_nhe correctly.
+				 */
+				if (is_delete_table && !CHECK_FLAG(re->status, ROUTE_ENTRY_REMOVED))
+					continue;
+
 				if (filter_nhg_id && re->nhe && re->nhe->id != filter_nhg_id)
 					continue;
 				if (exclude_nhg_id && re->nhe && re->nhe->id == exclude_nhg_id)
