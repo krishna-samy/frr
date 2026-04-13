@@ -865,7 +865,7 @@ static void tracker_flush_batch_process_table(struct nhg_hash_entry *parent_nhe,
 		for (trn = route_top(vt->table); trn; trn = route_next(trn)) {
 			struct route_node *rn;
 			struct route_entry *re;
-			bool processed_new_re = false;
+			bool flush_rn = false;
 
 			if (!trn->info)
 				continue;
@@ -880,8 +880,20 @@ static void tracker_flush_batch_process_table(struct nhg_hash_entry *parent_nhe,
 			RNODE_FOREACH_RE (rn, re) {
 				if (!CHECK_FLAG(re->status, ROUTE_ENTRY_TRACKER))
 					continue;
-				if (!CHECK_FLAG(re->status, ROUTE_ENTRY_CHANGED))
+				if (!CHECK_FLAG(re->status, ROUTE_ENTRY_CHANGED)) {
+					/*
+					 * Delete REs (from rib_delnode) have
+					 * REMOVED + TRACKER but never CHANGED.
+					 * Clear TRACKER so rib_process can
+					 * unlink them.
+					 */
+					if (is_delete_table &&
+					    CHECK_FLAG(re->status, ROUTE_ENTRY_REMOVED)) {
+						UNSET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
+						flush_rn = true;
+					}
 					continue;
+				}
 
 				if (filter_nhg_id && re->nhe && re->nhe->id != filter_nhg_id)
 					continue;
@@ -906,7 +918,7 @@ static void tracker_flush_batch_process_table(struct nhg_hash_entry *parent_nhe,
 							parent_nhe->id;
 					tracker->routes_pending++;
 				}
-				processed_new_re = true;
+				flush_rn = true;
 			}
 
 			/*
@@ -924,7 +936,7 @@ static void tracker_flush_batch_process_table(struct nhg_hash_entry *parent_nhe,
 			 * prefix from FIB, and frees the parent NHG's
 			 * refcount prematurely.
 			 */
-			if (processed_new_re) {
+			if (flush_rn) {
 				RNODE_FOREACH_RE (rn, re) {
 					if (CHECK_FLAG(re->status, ROUTE_ENTRY_TRACKER) &&
 					    !CHECK_FLAG(re->status, ROUTE_ENTRY_CHANGED))
