@@ -1184,8 +1184,15 @@ static void zebra_nhg_tracker_flush(struct nhg_event_tracker *tracker, struct nh
 	tracker_flush_build_groups(tracker, nhe);
 
 	if (!tracker->winner_nhg_id && listcount(tracker->flush_nhg_groups) == 0) {
-		/* Nothing to flush */
-		zebra_nhg_tracker_free(nhe, tracker);
+		/*
+		 * All routes landed in the delete table (protocols
+		 * withdrew every prefix for this NHG).  Nothing to
+		 * flush — just release parked delete REs so
+		 * rib_process can unlink them, then free resources.
+		 */
+		tracker_flush_batch_process_table(nhe, tracker, &tracker->delete_table, 0, 0,
+						  false, false);
+		tracker_flush_batch_finish(nhe, tracker);
 		return;
 	}
 

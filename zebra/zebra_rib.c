@@ -3993,12 +3993,14 @@ static void rib_link(struct route_node *rn, struct route_entry *re)
 			if (!rib_compare_routes(re, old_re, true))
 				continue;
 			/*
-			 * The tracker is matched against old_re's NHG, so
-			 * old_re must stay on the RN until the tracker
-			 * finishes.  Do not skip old_re even if it is marked
-			 * REMOVED — it may still carry the INSTALLED flag
-			 * and an active tracker on its NHG.
+			 * Skip REMOVED REs: they are being deleted and must
+			 * not be used as tracker anchors.  Otherwise a
+			 * link-up tracker can re-set TRACKER on a REMOVED RE
+			 * before rib_process unlinks it, leaving a stale RE
+			 * on dest->routes permanently.
 			 */
+			if (CHECK_FLAG(old_re->status, ROUTE_ENTRY_REMOVED))
+				continue;
 			if (!CHECK_FLAG(old_re->status, ROUTE_ENTRY_INSTALLED))
 				continue;
 			if (old_re->nhe &&
