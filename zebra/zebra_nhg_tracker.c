@@ -1021,7 +1021,6 @@ static void tracker_flush_batch_start_phase2(struct nhg_hash_entry *nhe,
 	 * Subsequent winner REs find NHG-10 via content lookup.
 	 */
 	SET_FLAG(nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
-
 	if (tracker->winner_is_matched) {
 		tracker_flush_batch_process_table(nhe, tracker, &tracker->matched_table, 0, 0,
 						  true, false);
@@ -1034,6 +1033,7 @@ static void tracker_flush_batch_start_phase2(struct nhg_hash_entry *nhe,
 	 * winner routes reuse the same NHG ID and the kernel NHG was
 	 * already updated above.
 	 */
+
 	zlog_info("%s: phase 2 done for NHG %u, finishing tracker", __func__, nhe->id);
 	tracker_flush_batch_finish(nhe, tracker);
 }
@@ -1165,9 +1165,6 @@ static void tracker_flush_batch_start_phase1(struct nhg_hash_entry *nhe,
 	zlog_info("%s: NHG %u winner NHG %u, has_phase1=%d", __func__, nhe->id,
 		  tracker->winner_nhg_id, has_phase1);
 
-	/* Flush parked route deletions (always, regardless of phase) */
-	tracker_flush_batch_process_table(nhe, tracker, &tracker->delete_table, 0, 0, false, true);
-
 	if (has_phase1) {
 		tracker->flush_state = TRACKER_FLUSH_PHASE1;
 
@@ -1180,9 +1177,16 @@ static void tracker_flush_batch_start_phase1(struct nhg_hash_entry *nhe,
 			tracker_flush_batch_process_table(nhe, tracker, &tracker->matched_table, 0,
 							  0, false, true);
 
+		/* Flush parked route deletions (always, regardless of phase) */
+		tracker_flush_batch_process_table(nhe, tracker, &tracker->delete_table, 0, 0,
+						  false, true);
+
 		if (tracker->routes_pending == 0)
 			tracker_flush_batch_start_phase2(nhe, tracker);
 	} else {
+		/* Flush parked route deletions (always, regardless of phase) */
+		tracker_flush_batch_process_table(nhe, tracker, &tracker->delete_table, 0, 0,
+						  false, true);
 		tracker_flush_batch_start_phase2(nhe, tracker);
 	}
 }
