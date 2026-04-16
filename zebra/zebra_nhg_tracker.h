@@ -200,14 +200,10 @@ extern void zebra_nhg_tracker_rn_add(struct nhg_tracker_table *tt, uint32_t *re_
 
 /* Park an RE in the appropriate tracker (called from rib_link).
  * orig_nhe is the originating NHE that carries the trackers.
- * If unlinked_by_tracker is non-NULL and a superseded transient parked RE
- * (same type/instance, TRACKER+CHANGED, not INSTALLED) was found during
- * eviction, it is freed via rib_unlink and *unlinked_by_tracker is set to true.
  */
 extern struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn,
 							   struct route_entry *re,
-							   struct nhg_hash_entry *orig_nhe,
-							   bool *unlinked_by_tracker);
+							   struct nhg_hash_entry *orig_nhe);
 
 /* Flush tracker if all expected REs have been parked */
 extern void zebra_nhg_tracker_flush_if_full(struct nhg_event_tracker *tracker,

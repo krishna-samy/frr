@@ -363,14 +363,8 @@ static void zebra_nhg_tracker_add_route(struct tracker_prefix_map_head *prefix_m
  * parked for this originating NHG (orig_nhe) on this tracker—each protocol
  * RE is one prefix_map row.  Example: RN1 has RE1 (proto1, NHG1) and RE2
  * (proto2, NHG1); evicting RE1 still leaves RE2 referencing the same RN.
- *
- * Stage 4: do not add rib_unlink here when tt is the delete table
- * (evict_from_delete). That path uses the same route_entry as protocol
- * delete; flush still drives rib_process / dplane when needed.
- * Matched/unmatched eviction (evict_from_matched / evict_from_unmatched)
- * would need separate rules if rib_unlink is ever added there.
  */
-static bool zebra_nhg_tracker_evict_re(struct nhg_event_tracker *tracker,
+static void zebra_nhg_tracker_evict_re(struct nhg_event_tracker *tracker,
 				       struct nhg_hash_entry *orig_nhe,
 				       struct tracker_prefix_map_head *prefix_map,
 				       struct nhg_tracker_table *tt, struct route_node *rn,
@@ -380,7 +374,6 @@ static bool zebra_nhg_tracker_evict_re(struct nhg_event_tracker *tracker,
 	struct tracker_prefix_map_entry *pm_entry;
 	struct route_table *vrf_table;
 	struct route_node *trn;
-	bool unlinked_by_tracker = false;
 
 	memset(&lk, 0, sizeof(lk));
 	prefix_copy(&lk.p, &rn->p);
@@ -390,10 +383,10 @@ static bool zebra_nhg_tracker_evict_re(struct nhg_event_tracker *tracker,
 
 	pm_entry = tracker_prefix_map_find(prefix_map, &lk);
 	if (!pm_entry)
-		return false;
+		return;
 
 	if (pm_entry->tracker != tracker)
-		return false;
+		return;
 
 	vrf_table = tracker_vrf_table_get(tt, re->vrf_id);
 	trn = route_node_lookup(vrf_table, &rn->p);
@@ -403,57 +396,14 @@ static bool zebra_nhg_tracker_evict_re(struct nhg_event_tracker *tracker,
 	 * this node has info (locked reference).
 	 */
 	if (!trn)
-		return false;
+		return;
+
+	UNSET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
 
 	tracker_prefix_map_del(prefix_map, pm_entry);
 	XFREE(MTYPE_NHG_TRACKER_PREFIX_MAP, pm_entry);
 	if (tt->re_count > 0)
 		tt->re_count--;
-
-	/*
-	 * Find the actual old RE on the RIB route_node and clear TRACKER on it.
-	 * For the add/replace path, re is the new incoming RE (does not have
-	 * TRACKER yet).  The old RE is a different pointer with the same
-	 * type/instance, TRACKER + CHANGED, and not INSTALLED.
-	 *
-	 * For an explicit delete (ZEBRA_ROUTE_DELETE), the RE passed here is
-	 * the existing/old RE itself (the new RE from the delete message is
-	 * only used as a lookup key and never linked into the RIB).
-	 * That existing RE has ROUTE_ENTRY_REMOVED but NOT ROUTE_ENTRY_CHANGED
-	 * (CHANGED is only set by process_subq_early_route_add, never by
-	 * rib_delnode).  The CHANGED requirement therefore prevents
-	 * rib_unlink from firing on a delete RE.
-	 */
-	{
-		rib_dest_t *dest = rib_dest_from_rnode(rn);
-		struct route_entry *old_re;
-		struct route_entry *old_re_next;
-
-		if (dest) {
-			for (old_re = re_list_first(&dest->routes); old_re; old_re = old_re_next) {
-				old_re_next = re_list_next(&dest->routes, old_re);
-				if (old_re == re)
-					continue;
-				if (old_re->type != re->type)
-					continue;
-				if (old_re->instance != re->instance)
-					continue;
-				if (!CHECK_FLAG(old_re->status, ROUTE_ENTRY_TRACKER))
-					continue;
-				if (!CHECK_FLAG(old_re->status, ROUTE_ENTRY_CHANGED))
-					continue;
-				if (CHECK_FLAG(old_re->status, ROUTE_ENTRY_INSTALLED))
-					continue;
-				if (dest->selected_fib == old_re)
-					continue;
-
-				UNSET_FLAG(old_re->status, ROUTE_ENTRY_TRACKER);
-				rib_unlink(rn, old_re);
-				unlinked_by_tracker = true;
-				break;
-			}
-		}
-	}
 
 	{
 		bool others_remain = false;
@@ -481,35 +431,31 @@ static bool zebra_nhg_tracker_evict_re(struct nhg_event_tracker *tracker,
 		}
 		route_unlock_node(trn);
 	}
-
-	return unlinked_by_tracker;
 }
 
-static bool zebra_nhg_tracker_evict_from_unmatched(struct nhg_event_tracker *tracker,
+static void zebra_nhg_tracker_evict_from_unmatched(struct nhg_event_tracker *tracker,
 						   struct nhg_hash_entry *orig_nhe,
 						   struct tracker_prefix_map_head *prefix_map,
 						   struct route_node *rn, struct route_entry *re)
 {
-	return zebra_nhg_tracker_evict_re(tracker, orig_nhe, prefix_map, &tracker->unmatched_table,
-					  rn, re);
+	zebra_nhg_tracker_evict_re(tracker, orig_nhe, prefix_map, &tracker->unmatched_table, rn,
+				   re);
 }
 
-static bool zebra_nhg_tracker_evict_from_matched(struct nhg_event_tracker *tracker,
+static void zebra_nhg_tracker_evict_from_matched(struct nhg_event_tracker *tracker,
 						 struct nhg_hash_entry *orig_nhe,
 						 struct tracker_prefix_map_head *prefix_map,
 						 struct route_node *rn, struct route_entry *re)
 {
-	return zebra_nhg_tracker_evict_re(tracker, orig_nhe, prefix_map, &tracker->matched_table,
-					  rn, re);
+	zebra_nhg_tracker_evict_re(tracker, orig_nhe, prefix_map, &tracker->matched_table, rn, re);
 }
 
-static bool zebra_nhg_tracker_evict_from_delete(struct nhg_event_tracker *tracker,
+static void zebra_nhg_tracker_evict_from_delete(struct nhg_event_tracker *tracker,
 						struct nhg_hash_entry *orig_nhe,
 						struct tracker_prefix_map_head *prefix_map,
 						struct route_node *rn, struct route_entry *re)
 {
-	return zebra_nhg_tracker_evict_re(tracker, orig_nhe, prefix_map, &tracker->delete_table,
-					  rn, re);
+	zebra_nhg_tracker_evict_re(tracker, orig_nhe, prefix_map, &tracker->delete_table, rn, re);
 }
 
 /*
@@ -641,8 +587,7 @@ static void zebra_nhg_tracker_park_delete(struct nhg_hash_entry *orig_nhe,
  * re		: the incoming RE
  */
 struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struct route_entry *re,
-						    struct nhg_hash_entry *orig_nhe,
-						    bool *unlinked_by_tracker)
+						    struct nhg_hash_entry *orig_nhe)
 {
 	struct nhg_event_tracker *tracker, *keeper;
 	struct nhg_event_tracker *evict_from;
@@ -651,7 +596,6 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 	struct tracker_prefix_map_entry *pm_re;
 	struct nhg_event_tracker *newest_tracker;
 	bool parked = false;
-	bool did_unlink = false;
 
 	memset(&pm_key, 0, sizeof(pm_key));
 	prefix_copy(&pm_key.p, &rn->p);
@@ -699,20 +643,10 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 			if (pm_re)
 				evict_from = pm_re->tracker;
 
-			/*
-			 * Evict from all three tables.  For a delete RE
-			 * (REMOVED), matched/unmatched eviction cleans up
-			 * the prefix_map entry, re_count, and trn->info
-			 * without calling rib_unlink (the old_re == re
-			 * check and the CHANGED requirement in evict_re
-			 * prevent it).
-			 */
-			if (zebra_nhg_tracker_evict_from_unmatched(evict_from, orig_nhe,
-								   prefix_map, rn, re))
-				did_unlink = true;
-			if (zebra_nhg_tracker_evict_from_matched(evict_from, orig_nhe, prefix_map,
-								 rn, re))
-				did_unlink = true;
+			zebra_nhg_tracker_evict_from_unmatched(evict_from, orig_nhe,
+							       prefix_map, rn, re);
+			zebra_nhg_tracker_evict_from_matched(evict_from, orig_nhe, prefix_map,
+							     rn, re);
 			zebra_nhg_tracker_evict_from_delete(evict_from, orig_nhe, prefix_map, rn,
 							    re);
 
@@ -741,12 +675,10 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 								     newest_tracker);
 		if (pm_re && newest_tracker &&
 		    pm_re->tracker->nhg_tracker_id <= newest_tracker->nhg_tracker_id) {
-			if (zebra_nhg_tracker_evict_from_unmatched(pm_re->tracker, orig_nhe,
-								   prefix_map, rn, re))
-				did_unlink = true;
-			if (zebra_nhg_tracker_evict_from_matched(pm_re->tracker, orig_nhe,
-								 prefix_map, rn, re))
-				did_unlink = true;
+			zebra_nhg_tracker_evict_from_unmatched(pm_re->tracker, orig_nhe,
+							       prefix_map, rn, re);
+			zebra_nhg_tracker_evict_from_matched(pm_re->tracker, orig_nhe,
+							     prefix_map, rn, re);
 			zebra_nhg_tracker_evict_from_delete(pm_re->tracker, orig_nhe, prefix_map,
 							    rn, re);
 		}
@@ -759,9 +691,6 @@ struct nhg_event_tracker *zebra_nhg_tracker_park_re(struct route_node *rn, struc
 	}
 
 	SET_FLAG(re->status, ROUTE_ENTRY_TRACKER);
-
-	if (unlinked_by_tracker)
-		*unlinked_by_tracker = did_unlink;
 
 	return tracker;
 }
