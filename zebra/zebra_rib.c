@@ -3993,12 +3993,14 @@ static void rib_link(struct route_node *rn, struct route_entry *re)
 			if (!rib_compare_routes(re, old_re, true))
 				continue;
 			/*
-			 * The tracker is matched against old_re's NHG, so
-			 * old_re must stay on the RN until the tracker
-			 * finishes.  Do not skip old_re even if it is marked
-			 * REMOVED — it may still carry the INSTALLED flag
-			 * and an active tracker on its NHG.
+			 * Skip REMOVED REs: they are being deleted and must
+			 * not be used as tracker anchors.  Otherwise a
+			 * link-up tracker can re-set TRACKER on a REMOVED RE
+			 * before rib_process unlinks it, leaving a stale RE
+			 * on dest->routes permanently.
 			 */
+			if (CHECK_FLAG(old_re->status, ROUTE_ENTRY_REMOVED))
+				continue;
 			if (!CHECK_FLAG(old_re->status, ROUTE_ENTRY_INSTALLED))
 				continue;
 			if (old_re->nhe &&
@@ -4008,7 +4010,22 @@ static void rib_link(struct route_node *rn, struct route_entry *re)
 					  old_re->nhe ? old_re->nhe->id : 0, rn);
 				orig_nhe = old_re->nhe;
 				tracker = zebra_nhg_tracker_park_re(rn, re, orig_nhe);
-				SET_FLAG(old_re->status, ROUTE_ENTRY_TRACKER);
+				if (tracker && !CHECK_FLAG(old_re->status, ROUTE_ENTRY_TRACKER)) {
+					/*
+					 * Register this rn in the tracker's
+					 * delete_table (without a prefix_map entry).
+					 * The old RE will soon be marked REMOVED by
+					 * rib_delnode; putting the rn in delete_table
+					 * guarantees the tracker flush visits it and
+					 * clears TRACKER, even if the new RE is later
+					 * evicted from matched/unmatched during rapid
+					 * NHG churn.
+					 */
+					zebra_nhg_tracker_rn_add(&tracker->delete_table,
+								 &tracker->delete_table.re_count,
+								 NULL, tracker, rn, old_re);
+					SET_FLAG(old_re->status, ROUTE_ENTRY_TRACKER);
+				}
 				break;
 			}
 		}
@@ -4077,6 +4094,9 @@ void rib_unlink(struct route_node *rn, struct route_entry *re)
 	if (IS_ZEBRA_DEBUG_RIB)
 		rnode_debug(rn, re->vrf_id, "%s: rn %p, re %p nhe %p", __func__, (void *)rn,
 			    (void *)re, re->nhe);
+
+	/* Tracker flush batch: route removed without going to dplane */
+	tracker_flush_batch_route_dplane_ack(re);
 
 	dest = rib_dest_from_rnode(rn);
 

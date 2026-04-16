@@ -2154,12 +2154,28 @@ void zebra_nhg_decrement_ref(struct nhg_hash_entry *nhe)
 	if (!zebra_nhg_depends_is_empty(nhe))
 		nhg_connected_tree_decrement_ref(&nhe->nhg_depends);
 
-	if (ZEBRA_NHG_CREATED(nhe) && nhe->refcnt <= 0)
+	if (ZEBRA_NHG_CREATED(nhe) && nhe->refcnt <= 0) {
+		/*
+		 * Never free an NHG while route entries still reference it.
+		 * Dependency chain decrements (e.g. ECMP group freed) can
+		 * bring refcnt to zero before all queued REs have been
+		 * processed through rib_process.  Bump refcnt to keep the
+		 * NHG alive — those REs will eventually move to a new NHG
+		 * and call decrement_ref, which will retry the free with
+		 * an empty re_head.
+		 */
+		if (nhe_re_tree_count(&nhe->re_head)) {
+			nhe->refcnt = 1;
+			return;
+		}
 		zebra_nhg_uninstall_kernel(nhe);
+	}
 }
 
 void zebra_nhg_increment_ref(struct nhg_hash_entry *nhe)
 {
+	bool absorbed_keep_around = false;
+
 	if (IS_ZEBRA_DEBUG_NHG_DETAIL)
 		zlog_debug("%s: nhe %p (%pNG) %d => %d", __func__, nhe, nhe,
 			   nhe->refcnt, nhe->refcnt + 1);
@@ -2170,9 +2186,18 @@ void zebra_nhg_increment_ref(struct nhg_hash_entry *nhe)
 		event_cancel(&nhe->timer);
 		nhe->refcnt--;
 		UNSET_FLAG(nhe->flags, NEXTHOP_GROUP_KEEP_AROUND);
+		absorbed_keep_around = true;
 	}
 
-	if (!zebra_nhg_depends_is_empty(nhe))
+	/*
+	 * Skip propagation when absorbing a KEEP_AROUND timer cancel.
+	 * The decrement_ref that triggered KEEP_AROUND skipped propagation
+	 * to children (early return), so this increment must also skip to
+	 * stay symmetric.  The deferred propagation will happen when the
+	 * NHG is eventually freed (timer fire → decrement_ref → propagation
+	 * + free_members edge release).
+	 */
+	if (!absorbed_keep_around && !zebra_nhg_depends_is_empty(nhe))
 		nhg_connected_tree_increment_ref(&nhe->nhg_depends);
 }
 
@@ -3550,7 +3575,7 @@ int nexthop_active_update(struct route_node *rn, struct route_entry *re,
 {
 	struct nhg_hash_entry *curr_nhe, *remove;
 	uint32_t curr_active = 0, backup_active = 0;
-	bool tracker_reworked;
+	bool tracker_reworked = false;
 
 	if (PROTO_OWNED(re->nhe) ||
 	    CHECK_FLAG(re->nhe->flags, NEXTHOP_GROUP_RECEIVED_FROM_EXTERNAL))
@@ -3578,11 +3603,11 @@ int nexthop_active_update(struct route_node *rn, struct route_entry *re,
 	 * This flag is set only at the start of phase 2 (winner processing),
 	 * so phase 1 losers never see it.  The first winner RE consumes it.
 	 */
-	tracker_reworked = CHECK_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
-
-	if (tracker_reworked)
-		UNSET_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
-	else
+	// tracker_reworked = CHECK_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
+	//
+	// if (tracker_reworked)
+	// 	UNSET_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
+	// else
 		curr_nhe->id = 0;
 
 	/* Process nexthops */
