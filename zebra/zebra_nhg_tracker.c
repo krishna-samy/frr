@@ -1020,7 +1020,7 @@ static void tracker_flush_batch_start_phase2(struct nhg_hash_entry *nhe,
 	 * in nexthop_active_update (copies resolved state back to NHG-10).
 	 * Subsequent winner REs find NHG-10 via content lookup.
 	 */
-	SET_FLAG(nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
+	// SET_FLAG(nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
 	if (tracker->winner_is_matched) {
 		tracker_flush_batch_process_table(nhe, tracker, &tracker->matched_table, 0, 0,
 						  true, false);
@@ -1137,11 +1137,11 @@ static void tracker_flush_batch_start_phase1(struct nhg_hash_entry *nhe,
 	 * NHG ID on the copy and do the second rework (resolved state
 	 * copy-back) for the first winner RE.
 	 */
-	if (!tracker->winner_is_matched && tracker->winner_nhe && tracker->winner_nhe != nhe) {
-		zlog_info("%s: first rework NHG %u (id stays %u) with winner NHG %u content before phase 1",
-			  __func__, nhe->id, nhe->id, tracker->winner_nhe->id);
-		tracker_flush_rework_nhg(nhe, tracker->winner_nhe);
-	}
+	// if (!tracker->winner_is_matched && tracker->winner_nhe && tracker->winner_nhe != nhe) {
+	// 	zlog_info("%s: first rework NHG %u (id stays %u) with winner NHG %u content before phase 1",
+	// 		  __func__, nhe->id, nhe->id, tracker->winner_nhe->id);
+	// 	tracker_flush_rework_nhg(nhe, tracker->winner_nhe);
+	// }
 
 	SET_FLAG(nhe->flags, NEXTHOP_GROUP_REINSTALL);
 

@@ -3575,7 +3575,7 @@ int nexthop_active_update(struct route_node *rn, struct route_entry *re,
 {
 	struct nhg_hash_entry *curr_nhe, *remove;
 	uint32_t curr_active = 0, backup_active = 0;
-	bool tracker_reworked;
+	bool tracker_reworked = false;
 
 	if (PROTO_OWNED(re->nhe) ||
 	    CHECK_FLAG(re->nhe->flags, NEXTHOP_GROUP_RECEIVED_FROM_EXTERNAL))
@@ -3603,11 +3603,11 @@ int nexthop_active_update(struct route_node *rn, struct route_entry *re,
 	 * This flag is set only at the start of phase 2 (winner processing),
 	 * so phase 1 losers never see it.  The first winner RE consumes it.
 	 */
-	tracker_reworked = CHECK_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
-
-	if (tracker_reworked)
-		UNSET_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
-	else
+	// tracker_reworked = CHECK_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
+	//
+	// if (tracker_reworked)
+	// 	UNSET_FLAG(re->nhe->flags, NEXTHOP_GROUP_TRACKER_REWORKED);
+	// else
 		curr_nhe->id = 0;
 
 	/* Process nexthops */
